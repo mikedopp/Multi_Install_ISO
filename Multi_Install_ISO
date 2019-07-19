@@ -1,0 +1,161 @@
+Import-Module "\MikeD\PowerCli_Associated_Files\ISODeploy\Vcenter.psm1"
+#Import-Module "MikeD\PowerCli_Associated_Files\ISODeploy\GuiCSVPicker.psm1"
+$cred0 = Import-PSCredentialFromJson -Path \Secure\admin0.json
+
+
+function Read-OpenFileDialog([string]$WindowTitle, [string]$InitialDirectory, [string]$Filter = "All files (*.*)|*.*", [switch]$AllowMultiSelect) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $openFileDialog.Title = $WindowTitle
+    if (![string]::IsNullOrWhiteSpace($InitialDirectory)) { $openFileDialog.InitialDirectory = $InitialDirectory }
+    $openFileDialog.Filter = $Filter
+    if ($AllowMultiSelect) { $openFileDialog.MultiSelect = $true }
+    $openFileDialog.ShowHelp = $true    # Without this line the ShowDialog() function may hang depending on system configuration and running from console vs. ISE.
+    $openFileDialog.ShowDialog() > $null
+    if ($AllowMultiSelect) { return $openFileDialog.Filenames } else { return $openFileDialog.Filename }
+}
+
+# Show input box popup and return the value entered by the user.
+function Read-InputBoxDialog([string]$Message, [string]$WindowTitle, [string]$DefaultText) {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    return [Microsoft.VisualBasic.Interaction]::InputBox($Message, $WindowTitle, $DefaultText)
+}
+# Show message box popup and return the button clicked by the user.
+function Read-MessageBoxDialog([string]$Message, [string]$WindowTitle, [System.Windows.Forms.MessageBoxButtons]$Buttons = [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]$Icon = [System.Windows.Forms.MessageBoxIcon]::None) {
+    Add-Type -AssemblyName System.Windows.Forms
+    return [System.Windows.Forms.MessageBox]::Show($Message, $WindowTitle, $Buttons, $Icon)
+}
+
+
+#asking you to find your CSV file for import.
+
+$filePath = Read-OpenFileDialog -WindowTitle "Select CSV File For Import" -InitialDirectory 'C:\' -Filter "CSV files (*.csv)|*.csv"
+if (![string]::IsNullOrEmpty($filePath)) {
+    #Read-MessageBoxDialog "CSV imported" -WindowTitle "Magic Happens Now" -Icon Exclamation
+    $vmlist = Import-Csv $filePath
+}
+else {
+    Read-MessageBoxDialog -Message "No selected file." -WindowTitle "Find a CSV to import" -Icon Exclamation
+    Exit
+}
+
+
+
+
+#where we going?
+
+#Time to import
+$vmlist = Import-Csv $filePath
+#$list = Get-Content -Raw -Path C:\Temp\jsonBuildTemplate.json | ConvertFrom-Json
+#Start Connection to ViServers
+#Connect-VTXR01 -Wait
+#Connect-WDC -Wait
+VCShowMenu
+
+#Get least Busy Host
+ 
+## get the datastore matching datastore-prod* that has the most freespace VMFS5_G600*_LUN*
+$oDatastoreWithMostFree = Get-Datastore VMFS5_G600*  | Sort-Object -Property FreespaceGB -Descending:$true | Select-Object -First 1
+$oDatastoreWithMostFree.Name
+#$vmlist = "vwqrqtz01"
+foreach ($item in $vmlist) {
+    # Map variables
+    $template = $item.template
+    $OSName = $item.OSName
+    $datastore = $item.datastore #$oDatastoreWithMostFree.Name #$item.datastore #Not needed AnyMore
+    $OSDiskSize = $item.OSDiskSize
+    $vmhost = $item.vmhost #$availHost
+    $ISO = $item.ISO
+    $vmname = $item.vmname
+    $ip = $item.ip
+    $subnet = $item.subnet
+    $gateway = $item.gateway
+    $primary = $item.primary
+    $secondary = $item.secondary
+    $netadapter = $item.netadapter
+    $datacenter = $item.datacenter
+    $destfolder = $item.folder
+    $vlan = $item.vlan
+    $OSRamSize = $item.OSRamSize
+    $cpucount = $item.NumCPU
+    $domain = $item.domain
+    $note = $item.note
+    $path = $item.path #used below map variables
+    $cred_User = $item.Cred_User
+    $cred_pass = $item.Cred_Pass
+    $SecondDiskSize = $item.SecondDiskSize
+    $SecondDiskDS = $item.SecondDiskDS
+    $GuestIDOS = $item.GuestIDOS
+    $spec = $item.spec
+    $type = $item.NetType
+    #For EDC REmove 'version' line as EDC does not support it.
+  
+    New-ADComputer -Name $vmname -SamAccountName $vmname -Path $path -Enabled $true -Location $datacenter
+
+
+    $NewVMParams = @{
+        'VMHost'            = $Vmhost
+        'Name'              = $Vmname
+        'Datastore'         = $datastore #$oDatastoreWithMostFree
+        'DiskGB'            = $OSDiskSize
+        'DiskStorageFormat' = 'Thin'
+        'MemoryGB'          = $OSRamSize
+        'GuestId'           = $GuestIDOS
+        'Version'           = 'v13'
+        'NumCpu'            = $cpucount
+        'Notes'             = $Note
+        'Location'          = $destfolder
+        'NetworkName'       = $vlan
+    }
+    $VMname = New-VM @NewVMParams
+
+    #Mounting ISO to CD Rom
+    $NewCDDriveParams = @{
+        'VM'             = $VMname
+        'IsoPath'        = $ISO
+        'StartConnected' = $true
+    }
+    New-CDDrive @NewCDDriveParams
+
+    #Detecting network driver and Setting to VMXNET3
+    $FindNet = Get-VM $vmname | Get-NetworkAdapter -Name "Network adapter 1"
+    Set-Networkadapter -NetworkAdapter $FindNet -Type Vmxnet3 -Confirm:$false
+
+    #Need to add Logic to see if a new drive is needed.
+    If ($SecondDiskSize -eq 0) {
+        Start-VM $VMName
+        write-host "$vmname Starting"
+    }
+    Else {
+        #Adding Second Disk (D DRIVE)
+        Write-Host "started adding more disk $vmname"
+        $NewHardDiskParams = @{
+            'VM'         = $VMName
+            'CapacityGB' = $SecondDiskSize
+            'Datastore'  = $oDatastoreWithMostFree
+        }
+        New-HardDisk @NewHardDiskParams
+        Start-VM -VM $VMname
+    }
+
+
+    $ErrorActionPreference = 'Continue'
+    If ($GuestIDOS -eq "windows7Server64Guest") {
+        Get-VM -Name $VMName | New-TagAssignment -Tag 'Win2008R2'
+    }
+    elseif ($GuestIDOS -eq 'windows8Server64Guest') {
+        Get-VM -Name $VMName | New-TagAssignment -Tag 'Win2012R2'
+    }
+    elseif ($GuestIDOS -eq 'windows9Server64Guest') {
+        Get-VM -Name $VMName | New-TagAssignment -Tag 'Win2016'
+    }
+    elseif ($GuestIDOS -eq 'windows9_64Guest') {
+        Get-VM -Name $vmname | New-TagAssignment -Tag 'Win10'
+    }
+    else {
+        "Not sure what the $GuestIDOS is"
+    }
+  
+}
+DisConnect-VM
+cls
