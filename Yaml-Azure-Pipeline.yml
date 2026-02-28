@@ -1,0 +1,35 @@
+#Create an azure-pipelines.yml that runs the provisioning script, reading a VM definition file stored in the repository (or as a pipeline variable).
+trigger:
+- main
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: 'vcenter-credentials'   # Variable group containing VCENTER_USER, VCENTER_PASS (as secret)
+  - name: vmDefinitionFile
+    value: 'config/prod-vms.yaml'
+
+steps:
+- powershell: |
+    Install-Module -Name powershell-yaml -Force -Scope CurrentUser
+    Install-Module -Name VMware.PowerCLI -Force -Scope CurrentUser
+  displayName: 'Install required modules'
+
+- task: DownloadSecureFile@1
+  name: vmConfig
+  displayName: 'Download VM definition YAML'
+  inputs:
+    secureFile: '$(vmDefinitionFile)'   # Stored as a secure file in the library
+
+- powershell: |
+    $cred = New-Object System.Management.Automation.PSCredential (
+        $env:VCENTER_USER,
+        (ConvertTo-SecureString $env:VCENTER_PASS -AsPlainText -Force)
+    )
+    . .\scripts\Provision-VMs.ps1   # Your main provisioning script
+    Provision-VMs -DefinitionPath $(vmConfig.secureFilePath) -VcenterCredential $cred
+  env:
+    VCENTER_USER: $(VCENTER_USER)
+    VCENTER_PASS: $(VCENTER_PASS)
+  displayName: 'Provision VMs from YAML'
