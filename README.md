@@ -2,6 +2,24 @@
 
 **The engine that provisions brand‑new VMs from official Microsoft ISOs – no templates, no golden images, just pure automation.**
 
+```mermaid
+flowchart LR
+    A[cluster.yaml] --> B[Validation Engine]
+    B --> C[Platform Router]
+
+    C --> D[vSphere Backend]
+    C --> E[Terraform Backend]
+    C --> F[Kubernetes Backend]
+
+    D --> G[Virtual Machines]
+    E --> G
+    F --> H[Containers / Pods]
+```
+
+
+
+
+
 ## 📖 Overview
 This project automates the creation of Windows (and eventually Linux) virtual machines directly from installation media. It reads a declarative YAML definition, downloads the required ISO (if needed), generates an unattended answer file, creates the VM in vSphere, installs the OS, and finally applies post‑deployment configurations (Windows Updates, IIS/API roles, application code pull from Azure DevOps). All from scratch, every time.
 
