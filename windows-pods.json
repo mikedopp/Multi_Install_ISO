@@ -1,0 +1,19 @@
+#pods :)
+{
+  "pods": [
+    {
+      "name": "win-webserver",
+      "image": "mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2019",
+      "ports": [
+        { "containerPort": 80, "hostPort": 8080 }
+      ],
+      "env": [
+        { "name": "IP", "value": "10.244.1.10" },
+        { "name": "GATEWAY", "value": "10.244.1.1" }
+      ],
+      "volumes": [
+        { "name": "data", "hostPath": { "path": "C:\\data" } }
+      ]
+    }
+  ]
+}
