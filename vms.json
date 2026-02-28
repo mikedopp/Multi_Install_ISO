@@ -1,0 +1,22 @@
+#JSON for ADO Pipeline (as a secure file or variable)
+{
+  "vms": [
+    {
+      "vmname": "ado-build-agent",
+      "iso": "\\\\server\\share\\en_windows_2019.iso",
+      "os": "windows2019Server64Guest",
+      "cpu": 2,
+      "ramGB": 4,
+      "diskGB": 60,
+      "datastore": "ssd-prod",
+      "network": "ProdNet",
+      "ip": "10.0.0.50",
+      "subnet": "255.255.255.0",
+      "gateway": "10.0.0.1",
+      "dns": ["10.0.0.10"],
+      "domain": "contoso.com"
+    }
+  ]
+}
+
+#In the pipeline, you can read it with "Get-Content vms.json | ConvertFrom-Json"
