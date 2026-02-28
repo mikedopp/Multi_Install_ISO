@@ -1,0 +1,24 @@
+#local Windows Server, you can store the YAML definition alongside the script. Secrets can be retrieved from Azure KeyVault or a Secret Server API
+vms:
+  - vmname: "dev-web-01"
+    template: null   # null means from ISO
+    iso: "\\server\share\en_windows_server_2019_x64.iso"
+    os: "windows2019Server64Guest"
+    cpu: 4
+    ramGB: 8
+    diskGB: 60
+    datastore: "datastore1"
+    network: "VM Network"
+    ip: "192.168.10.20"
+    subnet: "255.255.255.0"
+    gateway: "192.168.10.1"
+    dns: ["192.168.10.10", "8.8.8.8"]
+    domain: "contoso.local"
+    credentials:
+      localAdmin: "Administrator"
+      # domainJoinUser: "DOMAIN\svc-join"   # retrieve from KeyVault
+    postInstall:
+      - "Install-WindowsFeature Web-Server"
+      - "New-Item C:\apps -ItemType Directory"
+
+# Secrets are not stored here; they are injected at runtime via environment variables or API calls.
