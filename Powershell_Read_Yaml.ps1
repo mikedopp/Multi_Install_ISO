@@ -1,5 +1,9 @@
-Install-Module -Name powershell-yaml -Force -Scope CurrentUser
+if (-not (Get-Module -ListAvailable -Name powershell-yaml)) {
+    Write-Warning "powershell-yaml is not installed. Run: Install-Module powershell-yaml -Scope CurrentUser -Force"
+}
 
-#example code to Read in
-#$vms = Read-VmDefinition -Path 'C:\config\vms.yaml'
-#$vms.vms | ForEach-Object { Write-Host "VM: $($_.vmname)" }
+. (Join-Path $PSScriptRoot 'Read-VmDefinition.ps1')
+
+# Example:
+# $definition = Read-VmDefinition -Path (Join-Path $PSScriptRoot 'cluster-vms.yaml')
+# $definition.vms | Select-Object vmname, os, cpu, ramGB, diskGB

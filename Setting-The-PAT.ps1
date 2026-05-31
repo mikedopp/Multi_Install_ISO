@@ -1,5 +1,15 @@
-# Set your Azure DevOps PAT as an environment variable (safer)
-$env:AZURE_DEVOPS_PAT = "your-personal-access-token"
+<#
+.SYNOPSIS
+    Starts a safe dry-run build using an existing AZURE_DEVOPS_PAT value.
+#>
 
-# Run the master script
-.\Build-Cluster.ps1 -YamlPath .\cluster-vms.yaml -AzureDevOpsPat $env:AZURE_DEVOPS_PAT
+[CmdletBinding()]
+param(
+    [string]$DefinitionPath = 'cluster-vms.yaml'
+)
+
+if (-not $env:AZURE_DEVOPS_PAT) {
+    Write-Warning 'AZURE_DEVOPS_PAT is not set. Post-deploy git clone steps will need a token at runtime.'
+}
+
+& (Join-Path $PSScriptRoot 'Build-Cluster.ps1') -DefinitionPath $DefinitionPath -PlanOnly

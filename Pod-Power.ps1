@@ -1,4 +1,12 @@
-$json = Get-Content pods.json | ConvertFrom-Json
+param(
+    [string]$Path = (Join-Path $PSScriptRoot "windows-pods.json")
+)
+
+if (-not (Test-Path -LiteralPath $Path)) {
+    throw "Pod definition file not found: $Path"
+}
+
+$json = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
 foreach ($pod in $json.pods) {
     $manifest = @{
         apiVersion = "v1"

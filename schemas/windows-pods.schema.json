@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Multi Install ISO Windows Pod Definitions",
+  "type": "object",
+  "required": ["pods"],
+  "properties": {
+    "pods": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "image"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "image": { "type": "string", "minLength": 1 },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["containerPort"],
+              "properties": {
+                "containerPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "hostPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            }
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "value"],
+              "properties": {
+                "name": { "type": "string" },
+                "value": { "type": "string" }
+              }
+            }
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "hostPath"],
+              "properties": {
+                "name": { "type": "string" },
+                "hostPath": {
+                  "type": "object",
+                  "required": ["path"],
+                  "properties": {
+                    "path": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

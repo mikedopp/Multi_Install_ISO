@@ -1,0 +1,2 @@
+vmname,iso,os,cpu,ramGB,diskGB,datastore,network,ip,subnet,gateway,dns,roles
+iis-web-01,\\storage\isos\en_windows_server_2022_x64.iso,windows2019Server64Guest,4,8,60,datastore1,VM Network,192.168.10.11,255.255.255.0,192.168.10.1,192.168.10.10,IIS

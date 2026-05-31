@@ -1,43 +1,155 @@
-# PostDeploy.ps1 – runs on the new VM
+<#
+.SYNOPSIS
+    Runs inside a newly installed VM to apply roles and pull application code.
+.DESCRIPTION
+    This script is intended for first-logon or guest-customization execution.
+    It avoids placing Azure DevOps PAT values into git remote URLs.
+#>
+
+[CmdletBinding()]
 param(
-    [string]$Roles,           # comma-separated list
+    [string[]]$Roles = @(),
     [string]$CodeRepo,
-    [string]$AppPoolName,
-    [string]$SiteName,
-    [string]$AzureDevOpsPat
+    [string]$AppPoolName = 'DefaultAppPool',
+    [string]$SiteName = 'Default Web Site',
+    [string]$AzureDevOpsPat = $env:AZURE_DEVOPS_PAT,
+    [string]$DestinationRoot = 'C:\inetpub\wwwroot',
+    [switch]$InstallUpdates,
+    [switch]$AutoReboot,
+    [switch]$AllowPackageInstall
 )
 
-# Install NuGet and PSWindowsUpdate
-Install-PackageProvider -Name NuGet -Force
-Install-Module PSWindowsUpdate -Force
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
 
-# Install Windows Updates (with auto-reboot)
-Install-WindowsUpdate -AcceptAll -AutoReboot
+$logPath = 'C:\PostDeploy.log'
+Start-Transcript -Path $logPath -Append | Out-Null
 
-# Install IIS if role contains "IIS"
-if ($Roles -like "*IIS*") {
-    Install-WindowsFeature -Name Web-Server, Web-Asp-Net45, Web-Mgmt-Console
+function Test-Command {
+    param([string]$Name)
+    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-# Install API prerequisites (Node.js, ASP.NET Core, etc.)
-if ($Roles -like "*API*") {
-    # Example: install Chocolatey, then Node.js
-    Set-ExecutionPolicy Bypass -Scope Process -Force
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    choco install nodejs -y
-    # Or install .NET Core hosting bundle
+function Install-ServerUpdates {
+    if (-not $InstallUpdates) {
+        Write-Host 'Skipping Windows Update. Pass -InstallUpdates to enable.'
+        return
+    }
+
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+
+    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+        Install-Module PSWindowsUpdate -Force -Scope CurrentUser
+    }
+
+    Import-Module PSWindowsUpdate -Force
+    $updateParams = @{
+        AcceptAll = $true
+    }
+    if ($AutoReboot) {
+        $updateParams.AutoReboot = $true
+    }
+
+    Install-WindowsUpdate @updateParams
 }
 
-# Clone code from Azure DevOps
-$repoUrl = $CodeRepo -replace 'https://', "https://PAT:$AzureDevOpsPat@"
-git clone $repoUrl C:\inetpub\wwwroot\$SiteName
+function Install-ApiRuntime {
+    if (-not $AllowPackageInstall) {
+        Write-Warning 'API role requested, but package installation is disabled. Pass -AllowPackageInstall to install Node.js.'
+        return
+    }
 
-# Configure IIS site (if IIS role)
-if ($Roles -like "*IIS*") {
-    Import-Module WebAdministration
-    # Create app pool
-    New-WebAppPool -Name $AppPoolName
-    # Create site
-    New-Website -Name $SiteName -PhysicalPath C:\inetpub\wwwroot\$SiteName -ApplicationPool $AppPoolName -Port 80
+    if (Test-Command winget) {
+        winget install --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements
+        return
+    }
+
+    if (Test-Command choco) {
+        choco install nodejs-lts -y
+        return
+    }
+
+    throw 'No supported package manager found. Install winget or Chocolatey before using the API role.'
+}
+
+function Invoke-GitClone {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Repo,
+        [Parameter(Mandatory)]
+        [string]$Destination
+    )
+
+    if (-not (Test-Command git)) {
+        throw 'git.exe was not found on PATH.'
+    }
+
+    if (-not $AzureDevOpsPat) {
+        throw 'AzureDevOpsPat was not supplied and AZURE_DEVOPS_PAT is not set.'
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
+
+    $askPassPath = Join-Path $env:TEMP ('ado-askpass-{0}.cmd' -f ([guid]::NewGuid()))
+    @'
+@echo off
+echo %* | findstr /i "Username" >nul
+if %errorlevel%==0 (
+  echo pat
+) else (
+  echo %AZURE_DEVOPS_PAT%
+)
+'@ | Set-Content -LiteralPath $askPassPath -Encoding ASCII
+
+    $previousAskPass = $env:GIT_ASKPASS
+    $previousPrompt = $env:GIT_TERMINAL_PROMPT
+    try {
+        $env:GIT_ASKPASS = $askPassPath
+        $env:GIT_TERMINAL_PROMPT = '0'
+        $env:AZURE_DEVOPS_PAT = $AzureDevOpsPat
+        git clone $Repo $Destination
+    }
+    finally {
+        $env:GIT_ASKPASS = $previousAskPass
+        $env:GIT_TERMINAL_PROMPT = $previousPrompt
+        Remove-Item -LiteralPath $askPassPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+try {
+    Install-ServerUpdates
+
+    if ($Roles -contains 'IIS') {
+        Install-WindowsFeature -Name Web-Server, Web-Asp-Net45, Web-Mgmt-Console
+    }
+
+    if ($Roles -contains 'API') {
+        Install-ApiRuntime
+    }
+
+    if ($CodeRepo) {
+        $destination = Join-Path $DestinationRoot $SiteName
+        Invoke-GitClone -Repo $CodeRepo -Destination $destination
+    }
+
+    if ($Roles -contains 'IIS') {
+        Import-Module WebAdministration
+        if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
+            New-WebAppPool -Name $AppPoolName | Out-Null
+        }
+
+        $sitePath = Join-Path $DestinationRoot $SiteName
+        if (-not (Test-Path $sitePath)) {
+            New-Item -ItemType Directory -Path $sitePath -Force | Out-Null
+        }
+
+        if (-not (Get-Website -Name $SiteName -ErrorAction SilentlyContinue)) {
+            New-Website -Name $SiteName -PhysicalPath $sitePath -ApplicationPool $AppPoolName -Port 80 | Out-Null
+        }
+    }
+}
+finally {
+    Stop-Transcript | Out-Null
 }

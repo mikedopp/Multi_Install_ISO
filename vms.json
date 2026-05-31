@@ -1,4 +1,3 @@
-#JSON for ADO Pipeline (as a secure file or variable)
 {
   "vms": [
     {
@@ -18,5 +17,3 @@
     }
   ]
 }
-
-#In the pipeline, you can read it with "Get-Content vms.json | ConvertFrom-Json"

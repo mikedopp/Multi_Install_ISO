@@ -1,0 +1,19 @@
+{
+  "vms": [
+    {
+      "vmname": "iis-web-01",
+      "iso": "\\\\storage\\isos\\en_windows_server_2022_x64.iso",
+      "os": "windows2019Server64Guest",
+      "cpu": 4,
+      "ramGB": 8,
+      "diskGB": 60,
+      "datastore": "datastore1",
+      "network": "VM Network",
+      "ip": "192.168.10.11",
+      "subnet": "255.255.255.0",
+      "gateway": "192.168.10.1",
+      "dns": ["192.168.10.10", "8.8.8.8"],
+      "roles": ["IIS"]
+    }
+  ]
+}

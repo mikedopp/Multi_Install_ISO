@@ -1,5 +1,3 @@
-Install-Module UnattendXmlBuilder -Scope CurrentUser
-
 <#
 .SYNOPSIS
     Creates an autounattend.xml file for unattended Windows installation.
@@ -43,6 +41,15 @@ param(
 
 # Try to use the UnattendXmlBuilder module
 $moduleName = "UnattendXmlBuilder"
+if (-not (Get-Module -ListAvailable -Name $moduleName)) {
+    try {
+        Install-Module $moduleName -Scope CurrentUser -Force -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Unable to install $moduleName. Falling back to minimal XML generation. $_"
+    }
+}
+
 if (Get-Module -ListAvailable -Name $moduleName) {
     Import-Module $moduleName -Force
     Write-Verbose "Using $moduleName to build answer file."
