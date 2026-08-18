@@ -1,82 +1,66 @@
 # Multi Install ISO
 
-Multi Install ISO provisions fresh virtual machines from installation media instead of templates or golden images. The current workflow reads a VM definition file, validates the build, writes a reviewable plan, generates install artifacts, and can then create vSphere VMs through VMware PowerCLI.
+Plan, validate, and eventually provision fresh vSphere virtual machines from installation media without depending on templates or golden images.
 
-Start with the runbook:
+> **Current status: DEVELOPMENT / NO-GO FOR PROVISIONING**
+>
+> Planning is the only approved workflow. Do not use the current repository to create VMs until the apply gates in the [implementation plan](docs/IMPLEMENTATION_PLAN.md) are complete and verified in non-production.
 
-- [Operator runbook](docs/RUNBOOK.md)
-- [Prerequisites and install links](docs/PREREQUISITES.md)
-- [Definition authoring guide](docs/DEFINITION_AUTHORING.md)
-- [C# orchestrator mockup](docs/MOCKUP.md)
-- [Audit notes](docs/AUDIT.md)
+## Current capability
 
-## What is included
-
-```text
-Build-Cluster.ps1                 Main orchestration entry point
-cluster-vms.yaml                  Four-node IIS/API sample definition
-local-vms.yml                     Single-node local sample definition
-New-UnattendXML.ps1               Windows unattended install helper
-Get-WindowsISO.ps1                Optional ISO download helper
-PostDeploy.ps1                    Guest-side role and app deployment helper
-Pod-Power.ps1                     Windows pod manifest generator
-main.tf                           Optional Terraform/vSphere path
-src/MultiInstallIso.Orchestrator  WinForms operator mockup
-docs/RUNBOOK.md                   Step-by-step operating procedure
-docs/PREREQUISITES.md             Download links, install locations, and verification commands
-docs/DEFINITION_AUTHORING.md      YAML/JSON/CSV/Terraform/Kubernetes authoring guide
-docs/MOCKUP.md                    UI and workflow mockup
-templates/                        Starter YAML/JSON/CSV/tfvars/pod files
-schemas/                          JSON schemas for capable editors
-tools/definition_helper.py        Python definition validator/converter/template helper
-```
-
-## Prerequisites
-
-```powershell
-Install-Module powershell-yaml -Scope CurrentUser -Force
-Install-Module VMware.PowerCLI -Scope CurrentUser -Force
-Install-Module UnattendXmlBuilder -Scope CurrentUser -Force
-```
-
-Also install Git and the .NET 8 SDK if you want to build the C# app.
+| Capability | Status | Evidence or limitation |
+| --- | --- | --- |
+| PowerShell parsing | Working | All current PowerShell files parse successfully. |
+| JSON planning | Working | `Build-Cluster.ps1 -PlanOnly` produces a reviewable plan. |
+| YAML planning | Working | Supports `powershell-yaml` hashtables and the built-in simple reader. |
+| C# prototype build | Working | The current WinForms prototype builds on .NET 8. It is not the target operator app. |
+| ISO acquisition | Not ready | The existing helper resolves a URL but does not complete and verify the ISO download. |
+| Unattended media attachment | Not ready | Answer-file generation is not yet attached to a vSphere VM. |
+| VM provisioning | Locked | Apply remains out of service until immutable plans, confirmations, receipts, and non-production proof exist. |
+| Published operator app | Not ready | No self-contained release or published smoke proof exists yet. |
 
 ## Safe quick start
 
-Generate a plan without touching vCenter:
+Requirements:
+
+- PowerShell 7: `pwsh.exe`
+- `powershell-yaml` for full YAML support
+- Git for repository operations
+- .NET 8 SDK for the current C# prototype
+
+Create a plan without contacting vCenter:
 
 ```powershell
-.\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -PlanOnly
-```
-
-Preview vCenter actions:
-
-```powershell
-$cred = Get-Credential -Message 'vCenter credential'
-
-.\Build-Cluster.ps1 `
+pwsh -NoProfile -File .\Build-Cluster.ps1 `
   -DefinitionPath .\cluster-vms.yaml `
-  -VcenterServer vcsa.contoso.local `
-  -VcenterCluster Production `
-  -VcenterCredential $cred `
-  -WhatIf
+  -PlanOnly
 ```
 
-Build the C# orchestrator:
+The command writes a plan under:
 
-```powershell
-dotnet build .\src\MultiInstallIso.Orchestrator\MultiInstallIso.Orchestrator.csproj --configuration Release
+```text
+artifacts\<timestamp>\build-plan.json
 ```
 
-Run the app:
+Review the VM names, guest IDs, datastores, networks, ISO paths, sizing, roles, and reported issues. `PlanOnly` does not prove those objects exist in vCenter.
 
-```powershell
-.\src\MultiInstallIso.Orchestrator\bin\Release\net8.0-windows\MultiInstallIso.Orchestrator.exe
+## Intended operator workflow
+
+```mermaid
+flowchart LR
+    A["Definition file"] --> B["Parse and validate"]
+    B --> C["Write immutable plan"]
+    C --> D["Read-only vCenter preflight"]
+    D --> E["Exact apply confirmation"]
+    E --> F["Provision one VM at a time"]
+    F --> G["Write per-VM receipt and final summary"]
 ```
+
+The implementation is being built in gated phases. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for scope, acceptance criteria, and the current work item.
 
 ## Definition format
 
-Minimum YAML shape:
+The preferred YAML shape is:
 
 ```yaml
 vms:
@@ -90,27 +74,54 @@ vms:
     network: "VM Network"
 ```
 
-Use `cluster-vms.yaml` as the fuller four-node example.
+Supported planning inputs:
 
-For new definitions, open the C# app and use the `Definition Editor` tab. It includes templates, format tips, JSON formatting, and validation for PowerCLI VM definitions, Terraform tfvars, and Kubernetes pod definitions.
+- YAML: `cluster-vms.yaml`
+- JSON: `templates/powercli-vms.json`
+- CSV: `templates/powercli-vms.csv`
+- Terraform tfvars: `templates/terraform.tfvars.json`
+- Kubernetes pod definitions: `templates/kubernetes-pods.json`
 
-Template files are available in `templates/`:
+See [docs/DEFINITION_AUTHORING.md](docs/DEFINITION_AUTHORING.md) for field-level guidance.
 
-- `powercli-vms.yaml`
-- `powercli-vms.json`
-- `powercli-vms.csv`
-- `terraform.tfvars.json`
-- `kubernetes-pods.json`
+## Repository map
 
-## Security notes
+| Path | Purpose |
+| --- | --- |
+| `Build-Cluster.ps1` | Current plan and provisioning entry point |
+| `cluster-vms.yaml` | Four-node planning sample |
+| `tests/` | Offline regression tests; no vCenter writes |
+| `src/MultiInstallIso.Orchestrator/` | Existing .NET 8 WinForms prototype |
+| `schemas/` | JSON schemas for supported definition types |
+| `templates/` | Starter definition files |
+| `docs/RUNBOOK.md` | Current operator procedure |
+| `docs/IMPLEMENTATION_PLAN.md` | Gated rebuild plan and acceptance criteria |
+| `docs/AUDIT.md` | Historical audit notes; not current runtime proof |
 
-- Do not store passwords, PATs, or domain join credentials in YAML/JSON files.
-- Use `AZURE_DEVOPS_PAT`, Key Vault, SecretManagement, secure pipeline variables, or interactive credentials.
-- `PostDeploy.ps1` uses a temporary Git askpass helper so the PAT is not inserted into the repository URL.
-- Review `artifacts\<timestamp>\build-plan.json` before removing `-PlanOnly`.
+## Security boundaries
 
-## Current limits
+- Do not store passwords, PATs, product keys, or domain-join credentials in definition files.
+- Do not pass secrets through free-form command arguments or copy them into logs.
+- Generated answer files must be treated as sensitive, access-controlled artifacts with a defined cleanup lifecycle.
+- Downloaded scripts, ISOs, modules, and providers must be pinned and verified before execution.
+- `PlanOnly`, parser success, and a successful C# build do not authorize infrastructure writes.
 
-- ISO/floppy answer-file attachment is environment dependent and may need site-specific handling.
-- Terraform support is a secondary path and still requires real vSphere variables or environment-provided credentials.
-- The legacy `Multi_Install_ISO` CSV script remains for compatibility, but `Build-Cluster.ps1` is the preferred entry point.
+## Current prototype
+
+Build the existing WinForms prototype for inspection:
+
+```powershell
+dotnet build .\src\MultiInstallIso.Orchestrator\MultiInstallIso.Orchestrator.csproj `
+  --configuration Release
+```
+
+This proves compilation only. The target application will be a WPF/WebView2 operator shell with typed bridge messages, dependency and credential status, immutable plan review, guarded apply, redacted diagnostics, and a self-contained `win-x64` release.
+
+## Documentation
+
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
+- [Operator runbook](docs/RUNBOOK.md)
+- [Prerequisites](docs/PREREQUISITES.md)
+- [Definition authoring](docs/DEFINITION_AUTHORING.md)
+- [Existing UI mockup](docs/MOCKUP.md)
+- [Historical audit notes](docs/AUDIT.md)

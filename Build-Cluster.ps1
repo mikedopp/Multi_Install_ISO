@@ -110,6 +110,16 @@ function Get-PropertyValue {
     )
 
     foreach ($name in $Names) {
+        if ($Object -is [System.Collections.IDictionary]) {
+            if ($Object.Contains($name)) {
+                $value = $Object[$name]
+                if ($null -ne $value -and "$value" -ne '') {
+                    return $value
+                }
+            }
+            continue
+        }
+
         $property = $Object.PSObject.Properties[$name]
         if ($property -and $null -ne $property.Value -and "$($property.Value)" -ne '') {
             return $property.Value
@@ -117,6 +127,36 @@ function Get-PropertyValue {
     }
 
     return $Default
+}
+
+function Test-DefinitionMember {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Object,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object.Contains($Name)
+    }
+
+    return $null -ne $Object.PSObject.Properties[$Name]
+}
+
+function Get-DefinitionMemberValue {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Object,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object[$Name]
+    }
+
+    return $Object.PSObject.Properties[$Name].Value
 }
 
 function ConvertTo-Number {
@@ -143,8 +183,8 @@ function Read-BuildDefinition {
     switch ($extension) {
         '.json' {
             $definition = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-            if ($definition.PSObject.Properties['vms']) {
-                return @($definition.vms)
+            if (Test-DefinitionMember -Object $definition -Name 'vms') {
+                return @(Get-DefinitionMemberValue -Object $definition -Name 'vms')
             }
             return @($definition)
         }
@@ -159,10 +199,10 @@ function Read-BuildDefinition {
             }
             Ensure-Module -Name powershell-yaml -Required | Out-Null
             $definition = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Yaml
-            if (-not $definition.PSObject.Properties['vms']) {
+            if (-not (Test-DefinitionMember -Object $definition -Name 'vms')) {
                 throw "YAML definition must include a top-level 'vms:' collection."
             }
-            return @($definition.vms)
+            return @(Get-DefinitionMemberValue -Object $definition -Name 'vms')
         }
         default {
             throw "Unsupported definition file type '$extension'. Use YAML, JSON, or CSV."
