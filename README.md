@@ -125,3 +125,7 @@ This proves compilation only. The target application will be a WPF/WebView2 oper
 - [Definition authoring](docs/DEFINITION_AUTHORING.md)
 - [Existing UI mockup](docs/MOCKUP.md)
 - [Historical audit notes](docs/AUDIT.md)
+
+## License
+
+MIT. Copyright (c) 2019-2026 mikedopp. See [LICENSE](LICENSE).
