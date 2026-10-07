@@ -4,6 +4,8 @@ The engine (or glue) that pollutes vSphere — and now Hyper-V — with brand-ne
 
 Describe the VMs, get a plan with a hash, build the unattended answer media, then apply it with a receipt for every step. When it breaks, and it will, you'll know exactly where.
 
+![Overview: what's planned, what's built, and an honest list of what hasn't been proven yet](docs/screenshots/overview.png)
+
 > **Status (0.9.0, prerelease):** planning, validation, answer-media ISOs, install-ISO checks, and the desktop app are proven offline on Windows. **No VM has been built with this release yet.** The vSphere and Hyper-V apply paths, and Windows Setup or Anaconda actually eating the generated media, have not been run. Optimism is not evidence. See [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## The scenario
@@ -36,6 +38,25 @@ flowchart LR
 - Credentials go into a native dialog and reach the engine on stdin. They never touch the web UI, a command line, or a log.
 - Apply isn't run from the window yet. It hands you the exact command to run in a terminal, because the first real run deserves a human watching it.
 - `MultiInstallIso.exe --smoke` runs a self-check, including a real plan and answer-media build. `--snapshot <png> [--glass on|off] [--view <page>]` renders a page to an image.
+
+## Screenshots
+
+The real app, captured on Windows 10. No mockups were harmed.
+
+| | |
+| --- | --- |
+| ![Definition editor](docs/screenshots/definition.png) | ![Plan](docs/screenshots/plan.png) |
+| **Definition.** Edit YAML, pick vSphere or Hyper-V, plan. Bundled samples are read-only so you can't ruin them. | **Plan.** Four servers, zero blocking issues, one SHA-256 you'll be quoting for the rest of the day. |
+| ![Answer media](docs/screenshots/answer-media.png) | ![Apply](docs/screenshots/apply.png) |
+| **Answer media.** One ISO per VM, read back and verified. The yellow box is the part where it holds your passwords. | **Apply.** Readiness checklist, plus the exact command to run. It politely points out you haven't installed PowerCLI. |
+| ![Runs](docs/screenshots/runs.png) | ![Settings](docs/screenshots/settings-glass-on.png) |
+| **Runs.** Every plan you've ever written, including the one with 12 blocking issues. We don't talk about that one. | **Settings.** Glass, opacity, blur, close to tray, and where everything lives. |
+
+Glass on, glass off. For people who think translucency is a personality:
+
+| Glass on | Glass off |
+| --- | --- |
+| ![Overview with glass](docs/screenshots/overview.png) | ![Overview without glass](docs/screenshots/overview-glass-off.png) |
 
 ## Command line
 
