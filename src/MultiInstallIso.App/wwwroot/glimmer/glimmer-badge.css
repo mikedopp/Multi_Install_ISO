@@ -1,0 +1,295 @@
+/*! Glimmer badge 0.4.0 | MIT | (c) 2026 mikedopp | orb look after "orb" by LerSent001 (MIT) */
+/*
+ * Glimmer badge: a CSS-only mini orb and the version button built around it.
+ * No JavaScript, no GPU; drop this file in and change a class.
+ *
+ *   <button class="version-button glimmer-version" data-preset="sonar" data-state="idle">
+ *     <span class="glimmer-dot" aria-hidden="true"></span><span class="glimmer-label">v1.2.0</span>
+ *   </button>
+ *
+ * data-preset   any Glimmer preset name (colours are generated from Glimmer's registry)
+ * data-state    idle | thinking | success | error  (put it on the button or on the dot)
+ *
+ * The orb look follows "orb" by LerSent001 (MIT): a flowing four-colour body
+ * under a glass shell with a cool/warm rim and a key highlight. This file is
+ * Glimmer's own CSS take on it for sizes where a shader would be wasted.
+ */
+
+@property --gd-a { syntax: "<color>"; inherits: true; initial-value: #ffd86b; }
+@property --gd-b { syntax: "<color>"; inherits: true; initial-value: #82f4ff; }
+@property --gd-c { syntax: "<color>"; inherits: true; initial-value: #ff7bd5; }
+@property --gd-d { syntax: "<color>"; inherits: true; initial-value: #8e6cff; }
+@property --gd-hi { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --gd-glow { syntax: "<color>"; inherits: true; initial-value: #956cff; }
+@property --gd-canvas { syntax: "<color>"; inherits: true; initial-value: #030409; }
+@property --gd-rim-a { syntax: "<color>"; inherits: true; initial-value: #9bf4ff; }
+@property --gd-rim-b { syntax: "<color>"; inherits: true; initial-value: #c5a9ff; }
+
+/* ── the mini orb ─────────────────────────────────────────────────────────── */
+
+.glimmer-dot {
+  --gd-size: 1.3em;
+  --gd-period: 9s;
+  --gd-glow-size: 3px;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--gd-size);
+  height: var(--gd-size);
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  vertical-align: -0.28em;
+  background: var(--gd-canvas);
+  box-shadow:
+    0 0 var(--gd-glow-size) color-mix(in srgb, var(--gd-glow) 70%, transparent),
+    0 0 0 0.5px color-mix(in srgb, var(--gd-hi) 25%, transparent);
+  transition: --gd-a .6s, --gd-b .6s, --gd-c .6s, --gd-d .6s, --gd-hi .6s, --gd-glow .6s,
+    --gd-rim-a .6s, --gd-rim-b .6s, --gd-canvas .6s, box-shadow .6s, filter .6s;
+}
+
+/* The fluid: a blurred four-colour swirl that turns, with a second layer
+   counter-rotating so the colours fold into each other instead of spinning
+   like a pinwheel. */
+.glimmer-dot::before,
+.glimmer-dot::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.glimmer-dot::before {
+  inset: -30%;
+  background:
+    radial-gradient(circle at 30% 35%, var(--gd-b) 0 18%, transparent 46%),
+    radial-gradient(circle at 70% 62%, var(--gd-c) 0 16%, transparent 44%),
+    radial-gradient(circle at 42% 78%, var(--gd-d) 0 14%, transparent 42%),
+    conic-gradient(from 20deg, var(--gd-a), var(--gd-b), var(--gd-c), var(--gd-d), var(--gd-a));
+  filter: blur(calc(var(--gd-size) * 0.14)) saturate(1.15);
+  animation: glimmer-dot-swirl var(--gd-period) linear infinite;
+}
+
+/* The glass: a cool rim lower-right, a warm rim upper-left, a key highlight,
+   and shading toward the limb. Same light directions as the shader. */
+.glimmer-dot::after {
+  inset: 0;
+  background:
+    radial-gradient(ellipse 34% 24% at 33% 24%, color-mix(in srgb, var(--gd-hi) 85%, transparent), transparent 70%),
+    radial-gradient(circle at 50% 50%, transparent 56%, rgb(0 0 0 / 0.38) 100%);
+  box-shadow:
+    inset -0.09em -0.07em 0.12em -0.04em color-mix(in srgb, var(--gd-rim-a) 85%, transparent),
+    inset 0.08em 0.08em 0.12em -0.05em color-mix(in srgb, var(--gd-rim-b) 80%, transparent),
+    inset 0 0 0 0.06em rgb(255 255 255 / 0.22);
+}
+
+/* ── states ───────────────────────────────────────────────────────────────── */
+
+.glimmer-dot,
+[data-state="idle"] .glimmer-dot,
+.glimmer-dot[data-state="idle"] {
+  --gd-period: 9s;
+  filter: saturate(0.8) brightness(0.88);
+}
+
+[data-state="thinking"] .glimmer-dot,
+.glimmer-dot[data-state="thinking"] {
+  --gd-period: 1.7s;
+  --gd-glow-size: 6px;
+  filter: saturate(1.1) brightness(1.08);
+  animation: glimmer-dot-pulse 1.7s ease-in-out infinite;
+}
+
+[data-state="success"] .glimmer-dot,
+.glimmer-dot[data-state="success"] {
+  --gd-period: 5s;
+  --gd-glow-size: 7px;
+  filter: none;
+  animation: glimmer-dot-pop 0.6s cubic-bezier(.2, .9, .3, 1.4) 1;
+}
+
+[data-state="error"] .glimmer-dot,
+.glimmer-dot[data-state="error"] {
+  --gd-period: 12s;
+  --gd-glow-size: 6px;
+  filter: none;
+  animation: glimmer-dot-wobble 2.4s ease-in-out infinite;
+}
+
+/* ── the version button ───────────────────────────────────────────────────── */
+
+.glimmer-version {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding-left: 0.32em !important;
+  border: 1px solid color-mix(in srgb, var(--gd-glow) 38%, transparent) !important;
+  background:
+    radial-gradient(120% 140% at 0% 50%, color-mix(in srgb, var(--gd-glow) 16%, transparent), transparent 60%),
+    color-mix(in srgb, var(--gd-canvas) 55%, rgb(18 22 30)) !important;
+  box-shadow: 0 0 0 0 transparent;
+  transition: border-color .6s, box-shadow .6s, background .6s, --gd-glow .6s, --gd-canvas .6s;
+}
+
+.glimmer-version .glimmer-dot { --gd-size: 1.35em; }
+
+.glimmer-version:hover:not(:disabled),
+.glimmer-version:focus-visible {
+  border-color: color-mix(in srgb, var(--gd-glow) 70%, transparent) !important;
+  box-shadow: 0 0 12px -2px color-mix(in srgb, var(--gd-glow) 55%, transparent);
+}
+
+.glimmer-version:hover:not(:disabled) .glimmer-dot { --gd-period: 3s; filter: none; }
+
+.glimmer-version[data-state="thinking"] {
+  border-color: color-mix(in srgb, var(--gd-glow) 60%, transparent) !important;
+}
+
+.glimmer-version[data-state="success"],
+.glimmer-version[data-state="error"] {
+  border-color: color-mix(in srgb, var(--gd-glow) 75%, transparent) !important;
+  box-shadow: 0 0 14px -3px color-mix(in srgb, var(--gd-glow) 60%, transparent);
+}
+
+/* ── motion ───────────────────────────────────────────────────────────────── */
+
+@keyframes glimmer-dot-swirl {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.12); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes glimmer-dot-pulse {
+  0%, 100% { box-shadow: 0 0 3px color-mix(in srgb, var(--gd-glow) 60%, transparent), 0 0 0 0.5px color-mix(in srgb, var(--gd-hi) 25%, transparent); }
+  50% { box-shadow: 0 0 9px color-mix(in srgb, var(--gd-glow) 90%, transparent), 0 0 0 0.5px color-mix(in srgb, var(--gd-hi) 40%, transparent); }
+}
+
+@keyframes glimmer-dot-pop {
+  0% { transform: scale(0.82); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+@keyframes glimmer-dot-wobble {
+  0%, 100% { border-radius: 50%; }
+  25% { border-radius: 46% 54% 52% 48% / 53% 47% 55% 45%; }
+  50% { border-radius: 53% 47% 45% 55% / 47% 54% 46% 53%; }
+  75% { border-radius: 48% 52% 55% 45% / 52% 46% 54% 48%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glimmer-dot,
+  .glimmer-dot::before,
+  [data-state] .glimmer-dot { animation: none !important; }
+}
+
+/* ── custom looks (from the editor, applied by glimmer-badge.js) ──────────── */
+/* The runtime sets --gdx-* through the CSSOM (allowed under a strict style-src
+   CSP); these rules pick the right set for the current state. */
+
+.glimmer-custom {
+  --gd-a: var(--gdx-a); --gd-b: var(--gdx-b); --gd-c: var(--gdx-c); --gd-d: var(--gdx-d);
+  --gd-hi: var(--gdx-hi); --gd-glow: var(--gdx-glow); --gd-canvas: var(--gdx-canvas);
+  --gd-rim-a: var(--gdx-rim-a); --gd-rim-b: var(--gdx-rim-b);
+}
+.glimmer-custom[data-state="success"], .glimmer-custom [data-state="success"] {
+  --gd-a: var(--gdx-success-a); --gd-b: var(--gdx-success-b); --gd-c: var(--gdx-success-c); --gd-d: var(--gdx-success-d);
+  --gd-hi: var(--gdx-success-hi); --gd-glow: var(--gdx-success-glow); --gd-canvas: var(--gdx-success-canvas);
+  --gd-rim-a: var(--gdx-success-rim-a); --gd-rim-b: var(--gdx-success-rim-b);
+}
+.glimmer-custom[data-state="error"], .glimmer-custom [data-state="error"] {
+  --gd-a: var(--gdx-error-a); --gd-b: var(--gdx-error-b); --gd-c: var(--gdx-error-c); --gd-d: var(--gdx-error-d);
+  --gd-hi: var(--gdx-error-hi); --gd-glow: var(--gdx-error-glow); --gd-canvas: var(--gdx-error-canvas);
+  --gd-rim-a: var(--gdx-error-rim-a); --gd-rim-b: var(--gdx-error-rim-b);
+}
+
+/* ── the editor overlay (opened by glimmer-badge.js) ──────────────────────── */
+
+.glimmer-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483600;
+  display: grid;
+  place-items: center;
+  padding: 2.5vh 2.5vw;
+  background: rgb(3 4 9 / 0.72);
+  backdrop-filter: blur(6px);
+  animation: glimmer-overlay-in .25s ease;
+}
+
+.glimmer-editor-frame {
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 14px;
+  background: #000;
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.8);
+}
+
+.glimmer-editor-loading {
+  position: absolute;
+  color: rgb(255 255 255 / 0.6);
+  font: 500 14px/1.4 "Segoe UI", system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.glimmer-editor-overlay.is-loaded .glimmer-editor-loading { display: none; }
+
+@keyframes glimmer-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── preset colours (generated from Glimmer's registry by scripts/build.mjs) ─ */
+
+:root { --gd-a: #FFD86B; --gd-b: #82F4FF; --gd-c: #FF7BD5; --gd-d: #8E6CFF; --gd-hi: #FFFFFF; --gd-glow: #956CFF; --gd-canvas: #030409; --gd-rim-a: #9BF4FF; --gd-rim-b: #C5A9FF; }
+[data-state="success"] { --gd-a: #78E193; --gd-b: #4FF2D9; --gd-c: #C5EECD; --gd-d: #409599; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #030409; --gd-rim-a: #83FDDB; --gd-rim-b: #68E7D9; }
+[data-state="error"] { --gd-a: #FF7651; --gd-b: #EFA486; --gd-c: #FF4C88; --gd-d: #AD327C; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #030409; --gd-rim-a: #F1B0A7; --gd-rim-b: #F66E97; }
+[data-preset="nebula"] { --gd-a: #04030C; --gd-b: #3B1C6E; --gd-c: #E2508C; --gd-d: #FFD9A0; --gd-hi: #FFF4E0; --gd-glow: #8A4DFF; --gd-canvas: #020108; --gd-rim-a: #B48CFF; --gd-rim-b: #FF8FB1; }
+[data-preset="nebula"][data-state="success"], [data-preset="nebula"] [data-state="success"] { --gd-a: #18D08D; --gd-b: #3DDEC3; --gd-c: #BEEBC2; --gd-d: #77A97C; --gd-hi: #F4FDF4; --gd-glow: #22E39A; --gd-canvas: #020108; --gd-rim-a: #89EFDB; --gd-rim-b: #81E4CB; }
+[data-preset="nebula"][data-state="error"], [data-preset="nebula"] [data-state="error"] { --gd-a: #EA4343; --gd-b: #EB7F53; --gd-c: #FA3F74; --gd-d: #C46553; --gd-hi: #FFE7DE; --gd-glow: #FF4545; --gd-canvas: #020108; --gd-rim-a: #F499A7; --gd-rim-b: #FF667E; }
+[data-preset="sonar"] { --gd-a: #010A08; --gd-b: #06402F; --gd-c: #19C98A; --gd-d: #C8FFE6; --gd-hi: #E6FFF4; --gd-glow: #19C98A; --gd-canvas: #010604; --gd-rim-a: #5CFFC1; --gd-rim-b: #38B6FF; }
+[data-preset="sonar"][data-state="success"], [data-preset="sonar"] [data-state="success"] { --gd-a: #18D08D; --gd-b: #37DFBF; --gd-c: #A6F6C1; --gd-d: #5CB390; --gd-hi: #F0FFF7; --gd-glow: #22E39A; --gd-canvas: #010604; --gd-rim-a: #78FFCF; --gd-rim-b: #3CE9D9; }
+[data-preset="sonar"][data-state="error"], [data-preset="sonar"] [data-state="error"] { --gd-a: #EA4343; --gd-b: #EA8048; --gd-c: #EA6974; --gd-d: #B77771; --gd-hi: #FBE9E2; --gd-glow: #FF4545; --gd-canvas: #010604; --gd-rim-a: #ECB396; --gd-rim-b: #EB7297; }
+[data-preset="harbor"] { --gd-a: #01100F; --gd-b: #0B4F5C; --gd-c: #2FB7B0; --gd-d: #F2D59A; --gd-hi: #FFF3D6; --gd-glow: #2FB7B0; --gd-canvas: #010807; --gd-rim-a: #5FE3D6; --gd-rim-b: #E0B565; }
+[data-preset="harbor"][data-state="success"], [data-preset="harbor"] [data-state="success"] { --gd-a: #18D08D; --gd-b: #37E0C2; --gd-c: #A7F4C6; --gd-d: #70A87A; --gd-hi: #F4FDF2; --gd-glow: #22E39A; --gd-canvas: #010807; --gd-rim-a: #78FAD3; --gd-rim-b: #73E9C2; }
+[data-preset="harbor"][data-state="error"], [data-preset="harbor"] [data-state="error"] { --gd-a: #EA4444; --gd-b: #EA824F; --gd-c: #EA627D; --gd-d: #C06350; --gd-hi: #FFE7DD; --gd-glow: #FF4545; --gd-canvas: #010807; --gd-rim-a: #ECAC9B; --gd-rim-b: #FA726C; }
+[data-preset="ember"] { --gd-a: #120300; --gd-b: #7A1405; --gd-c: #FF5A1F; --gd-d: #FFD27A; --gd-hi: #FFE7C2; --gd-glow: #FF5A1F; --gd-canvas: #060100; --gd-rim-a: #FF8A3D; --gd-rim-b: #FF3D3D; }
+[data-preset="ember"][data-state="success"], [data-preset="ember"] [data-state="success"] { --gd-a: #1AD08D; --gd-b: #4DDEBE; --gd-c: #C5ECBA; --gd-d: #77A773; --gd-hi: #F4FBEF; --gd-glow: #22E39A; --gd-canvas: #060100; --gd-rim-a: #9FEFC2; --gd-rim-b: #81DFC0; }
+[data-preset="ember"][data-state="error"], [data-preset="ember"] [data-state="error"] { --gd-a: #EA4343; --gd-b: #EE7E45; --gd-c: #FF4265; --gd-d: #C46244; --gd-hi: #FFE5D9; --gd-glow: #FF4545; --gd-canvas: #060100; --gd-rim-a: #FF9980; --gd-rim-b: #FF5667; }
+[data-preset="siri"] { --gd-a: #FFD86B; --gd-b: #82F4FF; --gd-c: #FF7BD5; --gd-d: #8E6CFF; --gd-hi: #FFFFFF; --gd-glow: #956CFF; --gd-canvas: #030409; --gd-rim-a: #9BF4FF; --gd-rim-b: #C5A9FF; }
+[data-preset="siri"][data-state="success"], [data-preset="siri"] [data-state="success"] { --gd-a: #78E193; --gd-b: #4FF2D9; --gd-c: #C5EECD; --gd-d: #409599; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #030409; --gd-rim-a: #83FDDB; --gd-rim-b: #68E7D9; }
+[data-preset="siri"][data-state="error"], [data-preset="siri"] [data-state="error"] { --gd-a: #FF7651; --gd-b: #EFA486; --gd-c: #FF4C88; --gd-d: #AD327C; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #030409; --gd-rim-a: #F1B0A7; --gd-rim-b: #F66E97; }
+[data-preset="voiceWave"] { --gd-a: #09030E; --gd-b: #CE2CCB; --gd-c: #FF5C71; --gd-d: #7B53FF; --gd-hi: #FFD9F0; --gd-glow: #CE2CCB; --gd-canvas: #020105; --gd-rim-a: #E48BFF; --gd-rim-b: #FF7890; }
+[data-preset="voiceWave"][data-state="success"], [data-preset="voiceWave"] [data-state="success"] { --gd-a: #19D08D; --gd-b: #6CDECF; --gd-c: #C5ECBF; --gd-d: #379299; --gd-hi: #F4F9F7; --gd-glow: #22E39A; --gd-canvas: #020105; --gd-rim-a: #97EFDB; --gd-rim-b: #81E2C6; }
+[data-preset="voiceWave"][data-state="error"], [data-preset="voiceWave"] [data-state="error"] { --gd-a: #EA4343; --gd-b: #F77F72; --gd-c: #FF426F; --gd-d: #AB277C; --gd-hi: #FFE2E1; --gd-glow: #FF4545; --gd-canvas: #020105; --gd-rim-a: #FA99A7; --gd-rim-b: #FF6075; }
+[data-preset="particleRibbon"] { --gd-a: #63F1FF; --gd-b: #4A9DFF; --gd-c: #8566FF; --gd-d: #F15DE1; --gd-hi: #F5FBFF; --gd-glow: #765CFF; --gd-canvas: #010208; --gd-rim-a: #9BF4FF; --gd-rim-b: #C5A9FF; }
+[data-preset="particleRibbon"][data-state="success"], [data-preset="particleRibbon"] [data-state="success"] { --gd-a: #32E6B2; --gd-b: #40E6D9; --gd-c: #AEEDD6; --gd-d: #70938F; --gd-hi: #F3FEF9; --gd-glow: #22E39A; --gd-canvas: #010208; --gd-rim-a: #83FDDB; --gd-rim-b: #68E7D9; }
+[data-preset="particleRibbon"][data-state="error"], [data-preset="particleRibbon"] [data-state="error"] { --gd-a: #EC8085; --gd-b: #EB8E86; --gd-c: #EF4597; --gd-d: #C02B6F; --gd-hi: #FDE8E4; --gd-glow: #FF4545; --gd-canvas: #010208; --gd-rim-a: #F1B0A7; --gd-rim-b: #F66E97; }
+[data-preset="blueDrop"] { --gd-a: #020B1D; --gd-b: #0756B8; --gd-c: #1EC8FF; --gd-d: #DDFBFF; --gd-hi: #EAFBFF; --gd-glow: #168DFF; --gd-canvas: #010207; --gd-rim-a: #4FD7FF; --gd-rim-b: #466DFF; }
+[data-preset="blueDrop"][data-state="success"], [data-preset="blueDrop"] [data-state="success"] { --gd-a: #18D08D; --gd-b: #37E0CC; --gd-c: #A6F6D6; --gd-d: #66B299; --gd-hi: #F1FEF9; --gd-glow: #22E39A; --gd-canvas: #010207; --gd-rim-a: #76F8DB; --gd-rim-b: #3FE1D9; }
+[data-preset="blueDrop"][data-state="error"], [data-preset="blueDrop"] [data-state="error"] { --gd-a: #EA4344; --gd-b: #EA836A; --gd-c: #EA6897; --gd-d: #BB757C; --gd-hi: #FBE8E4; --gd-glow: #FF4545; --gd-canvas: #010207; --gd-rim-a: #EBA9A7; --gd-rim-b: #EB5E97; }
+[data-preset="violetEmber"] { --gd-a: #100016; --gd-b: #4A0E8F; --gd-c: #A52EFF; --gd-d: #F1A7FF; --gd-hi: #FFD6FF; --gd-glow: #A52EFF; --gd-canvas: #030006; --gd-rim-a: #C257FF; --gd-rim-b: #6C2DFF; }
+[data-preset="violetEmber"][data-state="success"], [data-preset="violetEmber"] [data-state="success"] { --gd-a: #19D08D; --gd-b: #40DEC6; --gd-c: #B2EAD6; --gd-d: #709E99; --gd-hi: #F4F8F9; --gd-glow: #22E39A; --gd-canvas: #030006; --gd-rim-a: #8DECDB; --gd-rim-b: #48DED9; }
+[data-preset="violetEmber"][data-state="error"], [data-preset="violetEmber"] [data-state="error"] { --gd-a: #EA4344; --gd-b: #EB7E5D; --gd-c: #F23997; --gd-d: #C04D7C; --gd-hi: #FFE2E4; --gd-glow: #FF4545; --gd-canvas: #030006; --gd-rim-a: #F593A7; --gd-rim-b: #ED5497; }
+[data-preset="refractiveBlob"] { --gd-a: #1B102B; --gd-b: #7056A8; --gd-c: #BFA5F5; --gd-d: #F1E8FF; --gd-hi: #FFFFFF; --gd-glow: #B18CFF; --gd-canvas: #050208; --gd-rim-a: #D9C7FF; --gd-rim-b: #B59AE8; }
+[data-preset="refractiveBlob"][data-state="success"], [data-preset="refractiveBlob"] [data-state="success"] { --gd-a: #1BD08E; --gd-b: #49E0CA; --gd-c: #B7F2D3; --gd-d: #70AD99; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #050208; --gd-rim-a: #93F6DB; --gd-rim-b: #62E5D5; }
+[data-preset="refractiveBlob"][data-state="error"], [data-preset="refractiveBlob"] [data-state="error"] { --gd-a: #EA4446; --gd-b: #ED8365; --gd-c: #F55B93; --gd-d: #C06C7C; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #050208; --gd-rim-a: #F9A5A7; --gd-rim-b: #F4698F; }
+[data-preset="chromaticMetal"] { --gd-a: #FBFCFB; --gd-b: #7F8683; --gd-c: #D6DAD8; --gd-d: #33373A; --gd-hi: #FFFFFF; --gd-glow: #BDEFFF; --gd-canvas: #050606; --gd-rim-a: #6EDCFF; --gd-rim-b: #FF806D; }
+[data-preset="chromaticMetal"][data-state="success"], [data-preset="chromaticMetal"] [data-state="success"] { --gd-a: #76E8B1; --gd-b: #4EE3C5; --gd-c: #BCF9CD; --gd-d: #18906B; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #050606; --gd-rim-a: #7AF9DB; --gd-rim-b: #81E3C3; }
+[data-preset="chromaticMetal"][data-state="error"], [data-preset="chromaticMetal"] [data-state="error"] { --gd-a: #FE8484; --gd-b: #EE8959; --gd-c: #F87089; --gd-d: #A51C30; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #050606; --gd-rim-a: #EDAAA7; --gd-rim-b: #FF626E; }
+[data-preset="aurora"] { --gd-a: #030816; --gd-b: #20F0B6; --gd-c: #32A8FF; --gd-d: #A34BFF; --gd-hi: #FFFFFF; --gd-glow: #20F0B6; --gd-canvas: #010207; --gd-rim-a: #32A8FF; --gd-rim-b: #20F0B6; }
+[data-preset="aurora"][data-state="success"], [data-preset="aurora"] [data-state="success"] { --gd-a: #18D08D; --gd-b: #39F2CC; --gd-c: #A7F2D6; --gd-d: #4A9199; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #010207; --gd-rim-a: #74F2DB; --gd-rim-b: #39F2CC; }
+[data-preset="aurora"][data-state="error"], [data-preset="aurora"] [data-state="error"] { --gd-a: #EA4344; --gd-b: #EAA36A; --gd-c: #EA5C97; --gd-d: #B0247C; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #010207; --gd-rim-a: #EA9EA7; --gd-rim-b: #EA877F; }
+[data-preset="frost"] { --gd-a: #F7FBFF; --gd-b: #D6E8F7; --gd-c: #A8C8F0; --gd-d: #6F9EE8; --gd-hi: #FFFFFF; --gd-glow: #6F9EE8; --gd-canvas: #000000; --gd-rim-a: #D6E8F7; --gd-rim-b: #6F9EE8; }
+[data-preset="frost"][data-state="success"], [data-preset="frost"] [data-state="success"] { --gd-a: #75E8B2; --gd-b: #6FF0D8; --gd-c: #B3F6D2; --gd-d: #329C91; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #000000; --gd-rim-a: #92FBD9; --gd-rim-b: #49E6D5; }
+[data-preset="frost"][data-state="error"], [data-preset="frost"] [data-state="error"] { --gd-a: #FE8485; --gd-b: #F8A083; --gd-c: #F26891; --gd-d: #A94972; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #000000; --gd-rim-a: #F8ADA5; --gd-rim-b: #ED6A8F; }
+[data-preset="chrome"] { --gd-a: #FFFFFF; --gd-b: #B9C0CA; --gd-c: #343A43; --gd-d: #030405; --gd-hi: #FFFFFF; --gd-glow: #FFFFFF; --gd-canvas: #050608; --gd-rim-a: #B9C0CA; --gd-rim-b: #FFFFFF; }
+[data-preset="chrome"][data-state="success"], [data-preset="chrome"] [data-state="success"] { --gd-a: #78E8B2; --gd-b: #63EACF; --gd-c: #A7EBBB; --gd-d: #0A8F68; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #050608; --gd-rim-a: #8AF5D1; --gd-rim-b: #81F4D9; }
+[data-preset="chrome"][data-state="error"], [data-preset="chrome"] [data-state="error"] { --gd-a: #FF8585; --gd-b: #F49671; --gd-c: #EA3B68; --gd-d: #A4102A; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #050608; --gd-rim-a: #F4A398; --gd-rim-b: #FF8C97; }
+[data-preset="opal"] { --gd-a: #FFF6E8; --gd-b: #6EF2CF; --gd-c: #FF91D8; --gd-d: #756BFF; --gd-hi: #FFFFFF; --gd-glow: #9E8CFF; --gd-canvas: #07080D; --gd-rim-a: #CDE5FF; --gd-rim-b: #D9C8FF; }
+[data-preset="opal"][data-state="success"], [data-preset="opal"] [data-state="success"] { --gd-a: #78E7AC; --gd-b: #49F2D0; --gd-c: #C5F0CD; --gd-d: #359599; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #07080D; --gd-rim-a: #90FBDB; --gd-rim-b: #70EBD9; }
+[data-preset="opal"][data-state="error"], [data-preset="opal"] [data-state="error"] { --gd-a: #FF827C; --gd-b: #EDA373; --gd-c: #FF5389; --gd-d: #AA327C; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #07080D; --gd-rim-a: #F7ACA7; --gd-rim-b: #F97897; }
+[data-preset="spectrum"] { --gd-a: #FFFFFF; --gd-b: #1677FF; --gd-c: #F249A0; --gd-d: #35E6B2; --gd-hi: #FFFFFF; --gd-glow: #1677FF; --gd-canvas: #03040A; --gd-rim-a: #66E8FF; --gd-rim-b: #D26CFF; }
+[data-preset="spectrum"][data-state="success"], [data-preset="spectrum"] [data-state="success"] { --gd-a: #78E8B2; --gd-b: #38E2D9; --gd-c: #C2EBC4; --gd-d: #18AC81; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #03040A; --gd-rim-a: #79FBDB; --gd-rim-b: #6DE1D9; }
+[data-preset="spectrum"][data-state="error"], [data-preset="spectrum"] [data-state="error"] { --gd-a: #FF8585; --gd-b: #EA8786; --gd-c: #FD3E79; --gd-d: #A56B5A; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #03040A; --gd-rim-a: #EDADA7; --gd-rim-b: #F85E97; }
+[data-preset="plasma"] { --gd-a: #06020E; --gd-b: #0099FF; --gd-c: #258BFF; --gd-d: #1375FF; --gd-hi: #FFFFFF; --gd-glow: #0099FF; --gd-canvas: #020105; --gd-rim-a: #1951C2; --gd-rim-b: #00E9FF; }
+[data-preset="plasma"][data-state="success"], [data-preset="plasma"] [data-state="success"] { --gd-a: #18D08D; --gd-b: #37E5D9; --gd-c: #A6EFD6; --gd-d: #0D9699; --gd-hi: #F4FFF9; --gd-glow: #22E39A; --gd-canvas: #020105; --gd-rim-a: #73ECCF; --gd-rim-b: #37F0D9; }
+[data-preset="plasma"][data-state="error"], [data-preset="plasma"] [data-state="error"] { --gd-a: #EA4343; --gd-b: #EA8D86; --gd-c: #EA5197; --gd-d: #A4367C; --gd-hi: #FFE9E4; --gd-glow: #FF4545; --gd-canvas: #020105; --gd-rim-a: #EA9296; --gd-rim-b: #EA8497; }

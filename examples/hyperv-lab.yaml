@@ -1,0 +1,13 @@
+# Local Hyper-V lab VM. Plan with: Build-Cluster.ps1 -DefinitionPath examples\hyperv-lab.yaml -Target hyperv
+# For Hyper-V, "network" is the virtual switch name and "iso" is a local path.
+# "datastore" is kept for schema compatibility; VM files go under -HyperVPath (default: Hyper-V's VM folder).
+vms:
+  - vmname: "lab-srv-01"
+    iso: 'D:\ISOs\SERVER_EVAL_x64FRE_en-us.iso'
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"
+    cpu: 2
+    ramGB: 4
+    diskGB: 60
+    datastore: "local"
+    network: "Default Switch"

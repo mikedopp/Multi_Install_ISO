@@ -1,0 +1,23 @@
+vms:
+  - vmname: "web-01"
+    iso: "[ds1] iso/server2022.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"
+    cpu: 2
+    ramGB: 4
+    diskGB: 60
+    datastore: "ds1"
+    network: "VM Network"
+    ip: "10.1.0.11"
+    subnet: "255.255.255.0"
+    gateway: "10.1.0.1"
+    dns: ["10.1.0.5", "10.1.0.6"]
+    roles: ["IIS"]
+  - vmname: "rocky-01"
+    iso: "[ds1] iso/rocky9.iso"
+    os: "rockylinux_64Guest"
+    cpu: 2
+    ramGB: 2
+    diskGB: 20
+    datastore: "ds1"
+    network: "VM Network"

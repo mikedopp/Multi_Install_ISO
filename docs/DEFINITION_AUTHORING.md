@@ -1,60 +1,13 @@
-# Definition Authoring Guide
+# Definition authoring
 
-This guide explains how to create the input files used by the PowerCLI, Terraform, and Kubernetes paths.
-Use YAML when you want readable hand-edited build files, JSON when you want strict machine-friendly files, and CSV when you want fast spreadsheet bulk edits.
-
-## Quick choice
-
-| Format | Best for | Watch out for |
-| --- | --- | --- |
-| YAML | Human-edited PowerCLI VM definitions | Spaces matter; no tabs |
-| JSON | Strict VM definitions, Terraform tfvars, Kubernetes pods | No comments; escape backslashes |
-| CSV | Fast bulk PowerCLI VM edits | One flat row per VM; quote values with commas |
-
-## PowerCLI VM builds
-
-PowerCLI builds are driven by `Build-Cluster.ps1`.
-
-Safe validation command:
-
-```powershell
-.\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -PlanOnly
-```
-
-Required fields:
-
-| Field | YAML/JSON name | CSV column | Example |
-| --- | --- | --- | --- |
-| VM name | `vmname` or `name` | `vmname` | `iis-web-01` |
-| Guest OS | `os`, `guest_id`, or `GuestIDOS` | `os` | `windows2019Server64Guest` |
-| CPU | `cpu`, `num_cpus`, or `NumCPU` | `cpu` | `4` |
-| Memory | `ramGB`, `memory`, or `OSRamSize` | `ramGB` | `8` |
-| Disk | `diskGB`, `disk_size`, or `OSDiskSize` | `diskGB` | `60` |
-| Datastore | `datastore` | `datastore` | `datastore1` |
-| Network | `network`, `NetworkName`, or `vlan` | `network` | `VM Network` |
-
-Helpful optional fields:
-
-| Field | Purpose |
-| --- | --- |
-| `iso` | ISO path for fresh install media |
-| `edition` | Used by ISO helper if ISO is not supplied |
-| `ip`, `subnet`, `gateway`, `dns` | Guest networking intent |
-| `domain` | Domain join intent |
-| `roles` | Post-deploy role hints such as `IIS` or `API` |
-| `codeRepo` | App repo for guest-side post deploy |
-| `appPoolName`, `siteName` | IIS post-deploy settings |
-| `SecondDiskSize` | Optional second vSphere disk size in GB |
-| `vmhost`, `folder` | vSphere placement hints |
-
-### YAML example
+A definition lists the VMs to build. YAML, JSON, and CSV are equivalent: the same VMs in any of the three produce the same plan (this is tested).
 
 ```yaml
 vms:
   - vmname: "iis-web-01"
-    description: "IIS frontend server 1"
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
+    iso: "[datastore1] iso/en_windows_server_2022_x64.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"
     cpu: 4
     ramGB: 8
     diskGB: 60
@@ -64,218 +17,64 @@ vms:
     subnet: "255.255.255.0"
     gateway: "192.168.10.1"
     dns: ["192.168.10.10", "8.8.8.8"]
+    domain: "contoso.local"
     roles: ["IIS"]
 ```
 
-YAML rules that save pain:
+JSON uses a top-level `"vms": [ ... ]`. CSV uses one row per VM with the field names as headers; list fields (`dns`, `roles`) are separated with `;`.
 
-- Use two spaces per indentation level.
-- Do not use tabs.
-- Every VM starts with `- vmname:` under `vms:`.
-- Quote Windows paths with single quotes.
-- Keep arrays on one line for the built-in lightweight reader: `roles: ["IIS", "API"]`.
-- Do not put secrets in the file.
+## Fields
 
-Common YAML oops:
+Field names are case-insensitive. Aliases in brackets are accepted for older files.
 
-```yaml
-# Bad: tabs or inconsistent indentation
-vms:
-   - vmname: "web01"
-      cpu: 4
-
-# Bad: missing space after dash
-vms:
-  -vmname: "web01"
-
-# Better
-vms:
-  - vmname: "web01"
-    cpu: 4
-```
-
-### JSON example
-
-```json
-{
-  "vms": [
-    {
-      "vmname": "iis-web-01",
-      "iso": "\\\\storage\\isos\\en_windows_server_2022_x64.iso",
-      "os": "windows2019Server64Guest",
-      "cpu": 4,
-      "ramGB": 8,
-      "diskGB": 60,
-      "datastore": "datastore1",
-      "network": "VM Network",
-      "roles": ["IIS"]
-    }
-  ]
-}
-```
-
-JSON rules:
-
-- No `#` comments.
-- Every property except the last one needs a comma after it.
-- UNC paths need escaped backslashes: `\\\\server\\share\\file.iso`.
-- Use the app's `Format JSON` button after pasting.
-
-### CSV example
-
-```csv
-vmname,iso,os,cpu,ramGB,diskGB,datastore,network,ip,subnet,gateway,dns,roles
-iis-web-01,\\storage\isos\en_windows_server_2022_x64.iso,windows2019Server64Guest,4,8,60,datastore1,VM Network,192.168.10.11,255.255.255.0,192.168.10.1,192.168.10.10,IIS
-```
-
-CSV rules:
-
-- The first row must be the header.
-- Do not put comments before the header.
-- Quote values that contain commas.
-- CSV is intentionally flat; use YAML or JSON if you need richer arrays.
-
-## Terraform vSphere builds
-
-Terraform uses `terraform.tfvars.json` and `main.tf`. It is separate from `Build-Cluster.ps1`.
-
-Required VM fields:
-
-| Terraform field | Meaning | Unit |
+| Field | Required | Meaning |
 | --- | --- | --- |
-| `name` | VM name | text |
-| `num_cpus` | CPU count | count |
-| `memory` | Memory | MB |
-| `disk_size` | Disk size | GB |
-| `datastore` | vSphere datastore name | text |
-| `network` | vSphere network/portgroup name | text |
-| `guest_id` | vSphere guest ID | text |
-| `iso_path` | Datastore ISO path | `[datastore] folder/file.iso` |
+| `vmname` [`name`] | yes | Letters, digits, hyphens. Windows computer names are limited to 15 characters. Must be unique (case-insensitive). |
+| `os` [`guestId`, `guest_id`, `GuestIDOS`] | yes | vSphere guest ID. See the table below. Known-wrong IDs are blocked with the right one suggested; unknown IDs are a warning. |
+| `osFamily` | no | `windows` or `linux`. Worked out from `os` when omitted. |
+| `cpu` [`num_cpus`, `NumCPU`] | yes | Whole number, 1–128. |
+| `ramGB` [`OSRamSize`] | yes* | Gigabytes. *Or `memory`/`memoryMB` in megabytes (Terraform style). |
+| `diskGB` [`disk_size`, `OSDiskSize`] | yes | Gigabytes. Windows needs at least 32. |
+| `secondDiskGB` [`SecondDiskSize`] | no | Adds a second, thin disk. |
+| `datastore` | yes | vSphere datastore. Kept for Hyper-V plans, where VM files go under `-HyperVPath`. |
+| `network` [`NetworkName`, `vlan`] | yes | vSphere port group, or the Hyper-V virtual switch. |
+| `iso` [`iso_path`, `ISO`] | yes | vSphere: datastore path `[ds] folder/file.iso`. Hyper-V: local path. Install media is never downloaded implicitly. |
+| `imageName` [`edition`] / `imageIndex` | Windows | The image in `install.wim`, e.g. `Windows Server 2022 SERVERSTANDARD` (Desktop Experience) or `...SERVERSTANDARDCORE`. Without it Setup stops at the edition picker. Check names with `-Mode InspectIso`. |
+| `firmware` | no | `efi` (default) or `bios`. Decides the disk layout in the answer file and the Hyper-V generation. |
+| `nicType` | no | `e1000e` (default) or `vmxnet3`. Windows has no inbox vmxnet3 driver, so keep e1000e for the install. |
+| `macAddress` | no | Static MAC. By default the plan derives one from the VM name (vSphere `00:50:56:00-3F:xx:xx`, Hyper-V `00:15:5D:xx:xx:xx`) so the answer file can address the adapter. |
+| `ip`, `subnet` [`netmask`], `gateway`, `dns` | no | Static IPv4. `subnet` is a mask (`255.255.255.0`) or prefix (`24`, `/24`). Without `ip` the guest uses DHCP. |
+| `domain` | no | Windows domain to join during setup; the join account is given at media build. |
+| `timeZone` | no | Windows time zone ID (`Mountain Standard Time`) or IANA zone for Linux (`America/Denver`). Default UTC. |
+| `locale` | no | Default `en-US`. |
+| `vmhost`, `folder` | no | vSphere host and VM folder. Without `vmhost`, the least-loaded connected host in the cluster is used. |
+| `roles` | no | `IIS` and/or `API`, applied by PostDeploy at first logon. |
+| `codeRepo`, `siteName`, `appPoolName` | no | Code cloned by PostDeploy (https only; the PAT is read inside the guest). |
+| `postInstall` | no | Commands. Windows: each runs once at first logon (PowerShell, 1024-character limit after encoding). Linux: appended to `%post`. |
+| `description` [`note`] | no | VM notes. |
 
-Example:
+Secret fields (`password`, `adminPassword`, `domainJoinPass`, `Cred_Pass`, `pat`, `productKey`, `rootPassword`) are rejected. Credentials are given when the answer media is built.
 
-```json
-{
-  "vsphere_server": "vcenter.contoso.local",
-  "allow_unverified_ssl": true,
-  "datacenter": "Datacenter",
-  "cluster": "Cluster",
-  "folder": "vm/dev",
-  "vms": [
-    {
-      "name": "tf-web-01",
-      "num_cpus": 2,
-      "memory": 4096,
-      "disk_size": 50,
-      "datastore": "datastore1",
-      "network": "VM Network",
-      "guest_id": "windows2019Server64Guest",
-      "iso_path": "[datastore1] ISOs/en_windows_server_2022.iso",
-      "firmware": "efi"
-    }
-  ]
-}
-```
+## Guest IDs
 
-Do not store `vsphere_user` or `vsphere_password` in the file. Prefer `TF_VAR_vsphere_user` and `TF_VAR_vsphere_password`.
-
-## Kubernetes Windows pod builds
-
-Kubernetes pod JSON is consumed by `Pod-Power.ps1`.
-
-Command:
-
-```powershell
-.\Pod-Power.ps1 -Path .\windows-pods.json
-```
-
-Required pod fields:
-
-| Field | Meaning |
+| Guest ID | OS |
 | --- | --- |
-| `name` | Pod and container name |
-| `image` | Container image |
+| `windows9Server64Guest` | Windows Server 2016 |
+| `windows2019srv_64Guest` | Windows Server 2019 |
+| `windows2019srvNext_64Guest` | Windows Server 2022 |
+| `windows2022srvNext_64Guest` | Windows Server 2025 |
+| `windows9_64Guest` / `windows11_64Guest` | Windows 10 / 11 |
+| `rhel8_64Guest`, `rhel9_64Guest`, `rockylinux_64Guest`, `almalinux_64Guest`, `centos9_64Guest` | RHEL family (kickstart) |
 
-Helpful fields:
+The full list is in `Get-MiiKnownGuestId`. Ubuntu and Debian guest IDs plan, but their installers use autoinstall/preseed rather than kickstart, which this release does not generate.
 
-| Field | Meaning |
-| --- | --- |
-| `ports` | `containerPort` and optional `hostPort` |
-| `env` | Environment variables |
-| `volumes` | Host path volume definitions |
+## YAML subset
 
-Example:
+The engine has its own YAML reader so every tool reads a file the same way. It supports block mappings and lists, `- key: value` list items, `[a, b]` lists, single and double quotes, comments, `null`/`~`, `true`/`false`, and numbers. It rejects, with a line number: tabs in indentation, anchors and aliases, tags, block scalars (`|`, `>`), flow mappings (`{}`), and duplicate keys.
 
-```json
-{
-  "pods": [
-    {
-      "name": "win-webserver",
-      "image": "mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2019",
-      "ports": [
-        { "containerPort": 80, "hostPort": 8080 }
-      ],
-      "env": [
-        { "name": "ASPNETCORE_ENVIRONMENT", "value": "Development" }
-      ],
-      "volumes": [
-        { "name": "data", "hostPath": { "path": "C:\\data" } }
-      ]
-    }
-  ]
-}
-```
+Use single quotes for Windows paths (`'D:\ISOs\x.iso'`); in double quotes a backslash starts an escape.
 
-Kubernetes oops:
+## Other inputs
 
-- Windows containers need Windows nodes.
-- JSON Windows paths need escaped backslashes.
-- `hostPort` is optional and can create scheduling conflicts.
-
-## Editor workflow
-
-1. Open the C# orchestrator.
-2. Go to `Definition Editor`.
-3. Pick a template type.
-4. Use `Insert Template`.
-5. Edit values.
-6. Use `Validate`.
-7. Use `Save As`.
-8. Run `Build cluster plan only` or the matching Terraform/Kubernetes command.
-
-Templates are also available under `templates/`, and JSON schemas are under `schemas/` for editors that support schema validation.
-
-## Python helper
-
-Python is optional, but handy for operators who want command-line validation and conversions outside the C# app.
-
-Create a repo-local virtual environment:
-
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-python.txt
-```
-
-Validate a file:
-
-```powershell
-.\.venv\Scripts\python.exe .\tools\definition_helper.py validate .\cluster-vms.yaml
-```
-
-Format JSON:
-
-```powershell
-.\.venv\Scripts\python.exe .\tools\definition_helper.py format-json .\terraform.tfvars.json --write
-```
-
-Convert CSV to JSON:
-
-```powershell
-.\.venv\Scripts\python.exe .\tools\definition_helper.py convert .\templates\powercli-vms.csv .\artifacts\powercli-vms.json --target json
-```
-
-Create a starter template:
-
-```powershell
-.\.venv\Scripts\python.exe .\tools\definition_helper.py template --type powercli-yaml --output .\artifacts\new-cluster.yaml
-```
+- `templates\terraform.tfvars.json` feeds `adapters\terraform\main.tf` (separate from the engine). `iso_path` is relative to `iso_datastore`, without a `[datastore]` prefix.
+- `templates\kubernetes-pods.json` feeds `adapters\kubernetes\Pod-Power.ps1`, which writes Pod manifests for review.

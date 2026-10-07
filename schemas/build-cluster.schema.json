@@ -2,56 +2,207 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Multi Install ISO Build Definition",
   "type": "object",
-  "required": ["vms"],
+  "required": [
+    "vms"
+  ],
   "properties": {
     "vms": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["vmname", "os", "cpu", "ramGB", "diskGB", "datastore", "network"],
+        "required": [
+          "vmname",
+          "os",
+          "cpu",
+          "diskGB",
+          "datastore",
+          "network",
+          "iso"
+        ],
         "properties": {
-          "vmname": { "type": "string", "minLength": 1 },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "iso": { "type": "string" },
-          "edition": { "type": "string" },
-          "os": { "type": "string" },
-          "guest_id": { "type": "string" },
-          "GuestIDOS": { "type": "string" },
-          "cpu": { "type": "integer", "minimum": 1 },
-          "num_cpus": { "type": "integer", "minimum": 1 },
-          "NumCPU": { "type": "integer", "minimum": 1 },
-          "ramGB": { "type": "number", "exclusiveMinimum": 0 },
-          "memory": { "type": "number", "exclusiveMinimum": 0 },
-          "diskGB": { "type": "number", "exclusiveMinimum": 0 },
-          "disk_size": { "type": "number", "exclusiveMinimum": 0 },
-          "datastore": { "type": "string", "minLength": 1 },
-          "network": { "type": "string", "minLength": 1 },
-          "vlan": { "type": "string" },
-          "ip": { "type": "string" },
-          "subnet": { "type": "string" },
-          "gateway": { "type": "string" },
+          "vmname": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "iso": {
+            "type": "string"
+          },
+          "edition": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "guest_id": {
+            "type": "string"
+          },
+          "GuestIDOS": {
+            "type": "string"
+          },
+          "cpu": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "num_cpus": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "NumCPU": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ramGB": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "memory": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "diskGB": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "disk_size": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "datastore": {
+            "type": "string",
+            "minLength": 1
+          },
+          "network": {
+            "type": "string",
+            "minLength": 1
+          },
+          "vlan": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          },
+          "gateway": {
+            "type": "string"
+          },
           "dns": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "array", "items": { "type": "string" } }
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             ]
           },
-          "domain": { "type": "string" },
+          "domain": {
+            "type": "string"
+          },
           "roles": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "array", "items": { "type": "string" } }
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             ]
           },
-          "codeRepo": { "type": "string" },
-          "appPoolName": { "type": "string" },
-          "siteName": { "type": "string" },
-          "SecondDiskSize": { "type": "number", "minimum": 0 },
-          "vmhost": { "type": "string" },
-          "folder": { "type": "string" }
-        }
+          "codeRepo": {
+            "type": "string"
+          },
+          "appPoolName": {
+            "type": "string"
+          },
+          "siteName": {
+            "type": "string"
+          },
+          "SecondDiskSize": {
+            "type": "number",
+            "minimum": 0
+          },
+          "vmhost": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "osFamily": {
+            "enum": [
+              "windows",
+              "linux"
+            ]
+          },
+          "imageName": {
+            "type": "string"
+          },
+          "imageIndex": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "firmware": {
+            "enum": [
+              "efi",
+              "bios"
+            ]
+          },
+          "nicType": {
+            "enum": [
+              "e1000e",
+              "vmxnet3"
+            ]
+          },
+          "macAddress": {
+            "type": "string",
+            "pattern": "^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$"
+          },
+          "interfaceAlias": {
+            "type": "string"
+          },
+          "memoryMB": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "secondDiskGB": {
+            "type": "number",
+            "minimum": 0
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "postInstall": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        },
+        "description": "ramGB (GB) or memory/memoryMB (MB) is also required. Secrets are not allowed."
       }
     }
   }

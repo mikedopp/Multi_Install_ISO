@@ -1,208 +1,106 @@
-# Multi Install ISO Runbook
+# Runbook
 
-This runbook is the safe operating path for building fresh VMs from ISO media.
-Start with planning commands. Do not run provisioning until the generated plan has been reviewed.
+The operator path from a definition file to running VMs. Each step checks the output of the one before it, and nothing contacts vCenter or Hyper-V until **Apply**.
 
-## 1. Prepare the operator workstation
+You can do steps 1–4 in the desktop app (`MultiInstallIso.exe`) or with `Build-Cluster.ps1`. Step 5 runs in a terminal in this release.
 
-Run from a Windows machine that can reach vCenter, the datastore ISO path, DNS, and the target guest networks.
-
-Required tools:
+## 1. Check dependencies
 
 ```powershell
-Install-Module powershell-yaml -Scope CurrentUser -Force
-Install-Module VMware.PowerCLI -Scope CurrentUser -Force
-Install-Module UnattendXmlBuilder -Scope CurrentUser -Force
-git --version
-dotnet --info
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode Dependencies
 ```
 
-Optional tools:
+Plan and media need only PowerShell 7 and Windows (IMAPI2FS, icacls, Mount-DiskImage). Apply needs VMware PowerCLI (vSphere) or the Hyper-V module plus an elevated session (Hyper-V). Nothing is installed automatically. See [PREREQUISITES.md](PREREQUISITES.md).
+
+## 2. Check the install media
+
+Get the SHA-256 from the publisher (Microsoft Evaluation Center or VLSC, Rocky/Alma download pages) and check the ISO before you use it:
 
 ```powershell
-terraform version
-winget --version
-py -3 --version
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode InspectIso -IsoPath D:\ISOs\server2022.iso `
+  -ExpectedSha256 <publisher-sha256> -ImageName "Windows Server 2022 SERVERSTANDARD"
 ```
 
-Download links, install locations, and verification commands are collected in `docs/PREREQUISITES.md`.
+`PASS` means the hash matched and the content was identified (Windows editions read from `install.wim`/`install.esd`, or Linux installer markers). `PARTIAL` means something could not be checked; read the notes. `FAIL` means do not use it.
 
-## 2. Choose the definition file
-
-Use `cluster-vms.yaml` for the four-node IIS/API scenario, or create a new YAML/JSON/CSV file with these minimum fields:
-
-- `vmname`
-- `os`
-- `cpu`
-- `ramGB`
-- `diskGB`
-- `datastore`
-- `network`
-- `iso` or `edition`
-
-Keep passwords and tokens out of definition files. Use environment variables, secure pipeline variables, Key Vault, SecretManagement, or a credential prompt.
-
-For a walkthrough of YAML, JSON, CSV, Terraform tfvars, and Kubernetes pod inputs, see `docs/DEFINITION_AUTHORING.md`. The C# app also includes a `Definition Editor` tab with starter templates and validation tips.
-
-## 3. Run the repository audit
-
-From the C# app, use `Audit > Audit Repository`.
-
-From PowerShell:
+To keep a verified copy in the ISO cache with a manifest:
 
 ```powershell
-dotnet build .\src\MultiInstallIso.Orchestrator\MultiInstallIso.Orchestrator.csproj --configuration Release
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode ImportIso -IsoPath \\share\isos\server2022.iso -ExpectedSha256 <sha256>
 ```
 
-Then check parser/data health:
+For vSphere, upload the ISO to a datastore yourself and use the datastore path (`[datastore1] iso/server2022.iso`) in the definition.
+
+## 3. Plan
 
 ```powershell
-$files = Get-ChildItem -File | Where-Object { $_.Extension -eq '.ps1' -or $_.Name -eq 'Multi_Install_ISO' }
-foreach ($file in $files) {
-  $tokens = $null
-  $errors = $null
-  [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
-  if ($errors) { $errors | ForEach-Object { "$($file.Name):$($_.Extent.StartLineNumber): $($_.Message)" } }
-}
+pwsh -NoProfile -File .\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -Target vsphere `
+  -VcenterServer vcsa.lab.local -VcenterCluster Lab -PlanOnly
 ```
 
-## 4. Edit and validate the definition
+The plan goes to `artifacts\<timestamp>\build-plan.json` with its SHA-256 in `build-plan.sha256`. The file is read-only. Review every VM: guest ID, firmware, sizing, datastore, network, IP/MAC, image name, and the warnings. Exit code 1 means blocking issues; media and apply refuse such a plan.
 
-In the C# app:
-
-1. Go to `Definition Editor`.
-2. Pick `PowerCLI YAML`, `PowerCLI JSON`, `PowerCLI CSV`, `Terraform tfvars JSON`, or `Kubernetes pods JSON`.
-3. Use `Insert Template` for a clean starter.
-4. Edit values.
-5. Use `Validate`.
-6. Save the file.
-
-For PowerCLI VM definitions, also use the `VM Definition` tab to preview the rows.
-
-## 5. Create a build plan
-
-This is the default safe command:
+## 4. Build answer media
 
 ```powershell
-.\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -PlanOnly
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode Media -PlanPath .\artifacts\<run>\build-plan.json -PlanHash <plan-sha256> `
+  -AdminCredential (Get-Credential Administrator) -DomainJoinCredential (Get-Credential CONTOSO\svc-join)
 ```
 
-The script writes:
+For Linux VMs add `-RootPasswordHash '<hash>'` (create one with `openssl passwd -6`; Git for Windows includes openssl).
 
-```text
-artifacts\<timestamp>\build-plan.json
-```
+Each VM gets `media\<vm>-answer.iso`:
 
-Review every VM for:
+- Windows: volume `MIIANSWER` with `autounattend.xml`, plus `mii\PostDeploy.ps1` and `mii\postdeploy.json` when the VM has roles or a code repo. Windows Setup reads `autounattend.xml` from any attached drive.
+- Linux: volume `OEMDRV` with `ks.cfg`. Anaconda loads it automatically.
 
-- correct VM name and guest ID
-- datastore and network names that exist in vCenter
-- reachable ISO path
-- CPU, memory, and disk sizing
-- roles and repo destinations
-- missing validation issues
-
-## 6. Preview vCenter actions
-
-Use `-WhatIf` before provisioning:
+Every ISO is read back and compared with what was generated. `media-manifest.json` records the hashes. The `media` folder is limited to you, SYSTEM, and Administrators, because the media holds credentials (the admin password is encoded, not encrypted; the domain-join password is plain text, as Windows requires). Re-check it at any time:
 
 ```powershell
-$cred = Get-Credential -Message 'vCenter credential'
-
-.\Build-Cluster.ps1 `
-  -DefinitionPath .\cluster-vms.yaml `
-  -VcenterServer vcsa.contoso.local `
-  -VcenterCluster Production `
-  -VcenterCredential $cred `
-  -WhatIf
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode VerifyMedia -PlanPath .\artifacts\<run>\build-plan.json
 ```
 
-This should show the artifact and vCenter actions without creating VMs.
+## 5. Apply
 
-## 7. Generate install artifacts only
+Run the first apply against non-production infrastructure with one disposable VM (`-VmName`).
 
-For answer-file testing without vCenter provisioning:
+vSphere:
 
 ```powershell
-$localAdmin = Read-Host 'Local Administrator password' -AsSecureString
-
-.\Build-Cluster.ps1 `
-  -DefinitionPath .\cluster-vms.yaml `
-  -LocalAdminPassword $localAdmin `
-  -SkipVCenter
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode Apply -PlanPath .\artifacts\<run>\build-plan.json -PlanHash <plan-sha256> `
+  -ConfirmTarget vcsa.lab.local -VcenterCredential (Get-Credential) -VmName iis-web-01
 ```
 
-Confirm the `autounattend_*.xml` files exist under `artifacts\<timestamp>`.
-
-## 8. Provision the VMs
-
-Only run this after the plan and `-WhatIf` output are correct:
+Hyper-V (elevated PowerShell 7 on the Hyper-V host; `network` is the virtual switch name, `iso` a local path):
 
 ```powershell
-$cred = Get-Credential -Message 'vCenter credential'
-$localAdmin = Read-Host 'Local Administrator password' -AsSecureString
-
-.\Build-Cluster.ps1 `
-  -DefinitionPath .\cluster-vms.yaml `
-  -VcenterServer vcsa.contoso.local `
-  -VcenterCluster Production `
-  -VcenterCredential $cred `
-  -LocalAdminPassword $localAdmin
+pwsh -NoProfile -File .\Build-Cluster.ps1 -Mode Apply -PlanPath .\artifacts\<run>\build-plan.json -PlanHash <plan-sha256> `
+  -ConfirmTarget $env:COMPUTERNAME -HyperVPath D:\Hyper-V
 ```
 
-Watch the console and vCenter tasks. The script creates empty VMs, attaches the ISO, sets the network adapter to VMXNET3 when available, optionally adds a second disk, and powers on each VM unless `-NoPowerOn` is supplied.
+Apply refuses to start unless the plan hash matches, the plan has no blocking issues, `-ConfirmTarget` names the target, and every VM's answer media still matches its manifest. PowerShell then asks for confirmation.
 
-## 9. Post-deployment
+For each VM, in order: Preflight → CreateVm → AttachMedia → Readback → PowerOn. On EFI VMs the provider presses Enter for about 30 seconds after power-on to answer "Press any key to boot from CD or DVD". The first failure stops the run. Nothing is rolled back or deleted.
 
-Inside a VM, the post-deploy script can install roles and clone code:
+Records in `artifacts\<run>\apply-<timestamp>\`:
 
-```powershell
-$env:AZURE_DEVOPS_PAT = '<secure runtime token>'
+| File | Written |
+| --- | --- |
+| `apply-attempt.json` | Before anything touches the target |
+| `receipt-<vm>.json` | After every step of that VM |
+| `run-summary.json` | At the end, including VMs not run |
 
-.\PostDeploy.ps1 `
-  -Roles IIS `
-  -CodeRepo 'https://dev.azure.com/yourorg/yourproject/_git/webapp' `
-  -AppPoolName WebAppPool `
-  -SiteName WebSite
-```
+## 6. After the install
 
-For API nodes that need Node.js:
+- Windows guests write `C:\ProgramData\MultiInstallIso\postdeploy-receipt.json` and `PostDeploy.log` when PostDeploy runs. A code clone needs the machine environment variable `AZURE_DEVOPS_PAT` inside the guest; without it the clone is skipped and the receipt says `PARTIAL`.
+- Delete the answer media once the VMs are built (app: **Answer media → Delete media**; vSphere also keeps a copy in `[datastore] multi-install-iso/`).
 
-```powershell
-.\PostDeploy.ps1 -Roles API -CodeRepo '<repo-url>' -SiteName ApiService -AllowPackageInstall
-```
+## Troubleshooting
 
-Windows Update is opt-in:
-
-```powershell
-.\PostDeploy.ps1 -Roles IIS -InstallUpdates -AutoReboot
-```
-
-Logs are written to:
-
-```text
-C:\PostDeploy.log
-```
-
-## 10. Validate completion
-
-Check:
-
-- all VMs are powered on in vCenter
-- VM console reaches Windows setup or first boot
-- DNS/IP assignments match the definition
-- `C:\PostDeploy.log` has no terminating errors
-- IIS nodes respond on port 80
-- API nodes have the expected runtime and code checkout
-
-## 11. Rollback
-
-If the build fails before OS install:
-
-1. Power off failed VMs.
-2. Remove only VMs created by the reviewed build plan.
-3. Keep `artifacts\<timestamp>\build-plan.json` for diagnosis.
-4. Fix the definition or infrastructure mismatch.
-5. Re-run `-PlanOnly` and `-WhatIf`.
-
-Do not delete unrelated VMs or datastores from automation scripts.
+| Symptom | Cause |
+| --- | --- |
+| Setup stops at the edition picker | No `imageName`/`imageIndex`, or the name doesn't match the media. Run InspectIso with `-ImageName`. |
+| Setup asks for a product key | Retail media needs `-ProductKey` at media build. Evaluation media does not. |
+| Static IP not applied | NIC was vmxnet3 (no inbox driver), or the MAC in the plan was changed on the VM. |
+| VM boots to PXE | The boot-from-CD prompt timed out. Re-run power-on and press a key in the console. |
+| Apply: "plan hash mismatch" | The plan changed or the wrong hash was pasted. Re-review and quote the current hash. |

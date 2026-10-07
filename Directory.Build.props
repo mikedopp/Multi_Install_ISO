@@ -1,0 +1,11 @@
+<Project>
+  <!-- Single source of the product version. build.cmd checks that the PowerShell module
+       manifest (powershell\MultiInstallIso\MultiInstallIso.psd1) carries the same number. -->
+  <PropertyGroup>
+    <Version>0.9.0</Version>
+    <Authors>mikedopp</Authors>
+    <Company>mikedopp</Company>
+    <Product>Multi Install ISO</Product>
+    <Copyright>Copyright (c) 2019-2026 mikedopp</Copyright>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,29 @@
+vms:
+  - vmname: "dup-01"
+    iso: "[ds1] iso/a.iso"
+    os: "windows2019Server64Guest"
+    cpu: "four"
+    ramGB: -1
+    diskGB: "abc"
+    datastore: "ds1"
+    network: "n"
+    ip: "10.0.0.300"
+    subnet: "255.0.255.0"
+  - vmname: "DUP-01"
+    iso: "[ds1] iso/a.iso"
+    os: "windows2019srvNext_64Guest"
+    cpu: 2
+    ramGB: 4
+    diskGB: 60
+    datastore: "ds1"
+    network: "n"
+    adminPassword: "TEST-ONLY-not-a-real-password"
+  - vmname: "this-name-is-way-too-long"
+    iso: "[ds1] iso/a.iso"
+    os: "someFutureGuest"
+    osFamily: "windows"
+    cpu: 2
+    ramGB: 4
+    diskGB: 60
+    datastore: "ds1"
+    network: "n"

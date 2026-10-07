@@ -1,0 +1,3 @@
+vmname,iso,imageName,os,cpu,ramGB,diskGB,datastore,network,ip,subnet,gateway,dns,roles
+web-01,[ds1] iso/server2022.iso,Windows Server 2022 SERVERSTANDARD,windows2019srvNext_64Guest,2,4,60,ds1,VM Network,10.1.0.11,255.255.255.0,10.1.0.1,10.1.0.5;10.1.0.6,IIS
+rocky-01,[ds1] iso/rocky9.iso,,rockylinux_64Guest,2,2,20,ds1,VM Network,,,,,

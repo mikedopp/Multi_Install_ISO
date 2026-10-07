@@ -1,613 +1,195 @@
+#Requires -Version 7.2
 <#
 .SYNOPSIS
-    Orchestrates a fresh VM build plan from a YAML, JSON, or CSV definition.
+    Command-line entry point for Multi Install ISO.
 .DESCRIPTION
-    This is the modern entry point for Multi_Install_ISO. It validates VM input,
-    writes a timestamped build plan, can generate unattended install artifacts,
-    and can optionally provision vSphere VMs through VMware PowerCLI.
+    Modes run in order. Each one checks the output of the one before it.
 
-    Use -PlanOnly first. Use -WhatIf to preview PowerShell ShouldProcess actions.
+      Plan          Read and validate a definition, then write an immutable plan and its SHA-256.
+      Media         Build and read back per-VM answer-media ISOs for a reviewed plan (needs -PlanHash).
+      VerifyMedia   Re-check answer media against its manifest.
+      Apply         Create VMs from a reviewed plan (needs -PlanHash and -ConfirmTarget).
+      InspectIso    Inspect an install ISO: hash, file system, Windows images or Linux markers.
+      ImportIso     Copy or download an install ISO into the cache with SHA-256 verification.
+      Dependencies  List every dependency and whether it is present.
+
+    -Json prints one JSON document on stdout (used by the desktop app).
+    Exit codes: 0 success, 1 blocking validation or verification failure, 2 error.
 .EXAMPLE
     .\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -PlanOnly
 .EXAMPLE
-    .\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -VcenterServer vcsa.lab.local -VcenterCluster Lab -WhatIf
+    .\Build-Cluster.ps1 -Mode Media -PlanPath .\artifacts\<run>\build-plan.json -PlanHash <sha256> -AdminCredential (Get-Credential Administrator)
+.EXAMPLE
+    .\Build-Cluster.ps1 -Mode Apply -PlanPath <plan> -PlanHash <sha256> -ConfirmTarget vcsa.lab.local -VcenterCredential (Get-Credential)
 #>
-
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [string]$DefinitionPath = 'cluster-vms.yaml',
-    [string]$VcenterServer,
-    [pscredential]$VcenterCredential,
-    [string]$VcenterCluster,
-    [string]$ArtifactRoot = 'artifacts',
-    [string]$IsoCachePath = 'artifacts\isos',
-    [securestring]$LocalAdminPassword,
-    [pscredential]$DomainJoinCredential,
-    [string]$AzureDevOpsPat = $env:AZURE_DEVOPS_PAT,
+    [ValidateSet('Plan', 'Media', 'VerifyMedia', 'Apply', 'InspectIso', 'ImportIso', 'Dependencies')]
+    [string]$Mode = 'Plan',
     [switch]$PlanOnly,
-    [switch]$InstallMissingModules,
-    [switch]$SkipIsoDownload,
-    [switch]$SkipUnattend,
-    [switch]$SkipVCenter,
-    [switch]$NoPowerOn
+
+    [string]$DefinitionPath = 'cluster-vms.yaml',
+    [string]$ArtifactRoot = 'artifacts',
+    [string]$IsoCachePath,
+    [ValidateSet('vsphere', 'hyperv')][string]$Target = 'vsphere',
+    [string]$VcenterServer,
+    [string]$VcenterCluster,
+
+    [string]$PlanPath,
+    [string]$PlanHash,
+    [string[]]$VmName,
+
+    [pscredential]$AdminCredential,
+    [pscredential]$DomainJoinCredential,
+    [securestring]$ProductKey,
+    [string]$RootPasswordHash,
+    [switch]$CredentialsFromStdin,
+
+    [string]$ConfirmTarget,
+    [pscredential]$VcenterCredential,
+    [string]$HyperVPath,
+    [switch]$NoPowerOn,
+
+    [string]$IsoPath,
+    [uri]$IsoUri,
+    [string]$ExpectedSha256,
+    [string]$ImageName,
+    [switch]$AllowUnverified,
+    [switch]$SkipHash,
+
+    [switch]$Json
 )
 
-Set-StrictMode -Version 2.0
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
+if ($PlanOnly) { $Mode = 'Plan' }
+# "pwsh -File" passes arrays as one string, so accept "vm1,vm2" too.
+if ($VmName) { $VmName = @($VmName | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
 
-function Write-Step {
-    param(
-        [string]$Message,
-        [ConsoleColor]$Color = [ConsoleColor]::Cyan
-    )
-
-    Write-Host "==> $Message" -ForegroundColor $Color
+function Resolve-RepoPath([string]$Path) {
+    if (-not $Path) { return $Path }
+    if ([IO.Path]::IsPathRooted($Path)) { return $Path }
+    return [IO.Path]::GetFullPath((Join-Path $PSScriptRoot $Path))
 }
 
-function Resolve-FullPath {
-    param([string]$Path)
-
-    if ([System.IO.Path]::IsPathRooted($Path)) {
-        return $Path
-    }
-
-    return (Join-Path $PSScriptRoot $Path)
+function Write-Step([string]$Message, [ConsoleColor]$Color = 'Cyan') {
+    if (-not $Json) { Write-Host "==> $Message" -ForegroundColor $Color }
 }
 
-function Ensure-Module {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Name,
-        [switch]$Required
-    )
+function Out-Result([object]$Object, [int]$Code) {
+    if ($Json) { $Object | ConvertTo-Json -Depth 12 -Compress | Write-Output }
+    exit $Code
+}
 
-    if (Get-Module -ListAvailable -Name $Name) {
-        Import-Module $Name -Force
-        return $true
-    }
+Import-Module (Join-Path $PSScriptRoot 'powershell\MultiInstallIso\MultiInstallIso.psd1') -Force
 
-    if ($InstallMissingModules) {
-        if ($PSCmdlet.ShouldProcess($Name, 'Install PowerShell module')) {
-            Install-Module -Name $Name -Scope CurrentUser -Force
+$ArtifactRoot = Resolve-RepoPath $ArtifactRoot
+if (-not $IsoCachePath) { $IsoCachePath = Join-Path $ArtifactRoot 'isos' } else { $IsoCachePath = Resolve-RepoPath $IsoCachePath }
+
+if ($CredentialsFromStdin) {
+    # The desktop app sends secrets as one JSON line on stdin so they never appear in a command line.
+    $line = [Console]::In.ReadLine()
+    if ($line) {
+        $c = $line | ConvertFrom-Json
+        function To-Secure([string]$s) { if ($s) { ConvertTo-SecureString $s -AsPlainText -Force } }
+        if ($c.PSObject.Properties['adminPassword'] -and $c.adminPassword) {
+            $AdminCredential = [pscredential]::new($(if ($c.adminUser) { $c.adminUser } else { 'Administrator' }), (To-Secure $c.adminPassword))
         }
-        if (Get-Module -ListAvailable -Name $Name) {
-            Import-Module $Name -Force
-            return $true
-        }
-    }
-
-    if ($Required) {
-        throw "Required PowerShell module '$Name' is not installed. Run: Install-Module $Name -Scope CurrentUser -Force"
-    }
-
-    Write-Warning "Optional PowerShell module '$Name' is not installed."
-    return $false
-}
-
-function Convert-SecureStringToPlainText {
-    param([securestring]$Value)
-
-    if (-not $Value) {
-        return $null
-    }
-
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        if ($c.PSObject.Properties['domainPassword'] -and $c.domainPassword) { $DomainJoinCredential = [pscredential]::new($c.domainUser, (To-Secure $c.domainPassword)) }
+        if ($c.PSObject.Properties['productKey'] -and $c.productKey) { $ProductKey = To-Secure $c.productKey }
+        if ($c.PSObject.Properties['rootPasswordHash'] -and $c.rootPasswordHash) { $RootPasswordHash = $c.rootPasswordHash }
+        $c = $null; $line = $null
     }
 }
 
-function Get-PropertyValue {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Object,
-        [Parameter(Mandatory)]
-        [string[]]$Names,
-        [object]$Default = $null
-    )
-
-    foreach ($name in $Names) {
-        if ($Object -is [System.Collections.IDictionary]) {
-            if ($Object.Contains($name)) {
-                $value = $Object[$name]
-                if ($null -ne $value -and "$value" -ne '') {
-                    return $value
-                }
+try {
+    switch ($Mode) {
+        'Plan' {
+            $definition = Resolve-RepoPath $DefinitionPath
+            Write-Step "Reading definition $definition"
+            $result = New-MiiPlan -DefinitionPath $definition -ArtifactRoot $ArtifactRoot -Target $Target -VcenterServer $VcenterServer -VcenterCluster $VcenterCluster
+            foreach ($vm in $result.Plan.vms) {
+                Write-Step "Planned $($vm.name) ($($vm.osFamily), $($vm.guestId))"
+                foreach ($i in $vm.issues) { if (-not $Json) { Write-Host "    BLOCKING: $i" -ForegroundColor Red } }
+                foreach ($w in $vm.warnings) { if (-not $Json) { Write-Host "    warning:  $w" -ForegroundColor Yellow } }
             }
-            continue
+            foreach ($i in $result.Plan.issues) { if (-not $Json) { Write-Host "    BLOCKING: $i" -ForegroundColor Red } }
+            Write-Step "Build plan written to $($result.PlanPath)" Green
+            Write-Step "Plan hash (SHA-256): $($result.PlanHash)" Green
+            if ($result.Blocking -gt 0) { Write-Step "$($result.Blocking) blocking issue(s). Media and apply will refuse this plan." Red }
+            else { Write-Step 'Plan is ready. No infrastructure was contacted.' Green }
+            Out-Result ([ordered]@{ mode = 'Plan'; planPath = $result.PlanPath; planHash = $result.PlanHash; runDirectory = $result.RunDirectory; blocking = $result.Blocking; warnings = $result.Warnings; plan = $result.Plan }) $(if ($result.Blocking -gt 0) { 1 } else { 0 })
         }
 
-        $property = $Object.PSObject.Properties[$name]
-        if ($property -and $null -ne $property.Value -and "$($property.Value)" -ne '') {
-            return $property.Value
-        }
-    }
-
-    return $Default
-}
-
-function Test-DefinitionMember {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Object,
-        [Parameter(Mandatory)]
-        [string]$Name
-    )
-
-    if ($Object -is [System.Collections.IDictionary]) {
-        return $Object.Contains($Name)
-    }
-
-    return $null -ne $Object.PSObject.Properties[$Name]
-}
-
-function Get-DefinitionMemberValue {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Object,
-        [Parameter(Mandatory)]
-        [string]$Name
-    )
-
-    if ($Object -is [System.Collections.IDictionary]) {
-        return $Object[$Name]
-    }
-
-    return $Object.PSObject.Properties[$Name].Value
-}
-
-function ConvertTo-Number {
-    param(
-        [object]$Value,
-        [double]$Default = 0
-    )
-
-    if ($null -eq $Value -or "$Value" -eq '') {
-        return $Default
-    }
-
-    return [double]$Value
-}
-
-function Read-BuildDefinition {
-    param([string]$Path)
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        throw "Definition file not found: $Path"
-    }
-
-    $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
-    switch ($extension) {
-        '.json' {
-            $definition = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-            if (Test-DefinitionMember -Object $definition -Name 'vms') {
-                return @(Get-DefinitionMemberValue -Object $definition -Name 'vms')
+        'Media' {
+            if (-not $PlanPath -or -not $PlanHash) { throw 'Media mode needs -PlanPath and -PlanHash from a reviewed plan.' }
+            $params = @{ PlanPath = (Resolve-RepoPath $PlanPath); PlanHash = $PlanHash }
+            foreach ($k in 'AdminCredential', 'DomainJoinCredential', 'ProductKey', 'RootPasswordHash', 'VmName') {
+                $v = Get-Variable -Name $k -ValueOnly
+                if ($v) { $params[$k] = $v }
             }
-            return @($definition)
+            $result = New-MiiAnswerMedia @params -Confirm:$false
+            foreach ($m in $result.Media) { Write-Step "$($m.vm): $($m.path) [$($m.volumeLabel)] sha256=$($m.sha256) read-back=$($m.readBack)" Green }
+            Write-Step "Manifest: $($result.ManifestPath)" Green
+            Write-Step 'Answer media holds credentials. Delete it when the build is finished.' Yellow
+            Out-Result ([ordered]@{ mode = 'Media'; mediaDirectory = $result.MediaDirectory; manifestPath = $result.ManifestPath; media = $result.Media }) 0
         }
-        '.csv' {
-            return @(Import-Csv -LiteralPath $Path)
+
+        'VerifyMedia' {
+            if (-not $PlanPath) { throw 'VerifyMedia needs -PlanPath.' }
+            $run = Split-Path -Parent (Resolve-RepoPath $PlanPath)
+            $checks = @(Test-MiiAnswerMedia -RunDirectory $run)
+            foreach ($c in $checks) { Write-Step "$($c.Vm): $($c.Status) $($c.Problems -join ' ')" $(if ($c.Status -eq 'PASS') { 'Green' } else { 'Red' }) }
+            Out-Result ([ordered]@{ mode = 'VerifyMedia'; results = $checks }) $(if ($checks | Where-Object Status -ne 'PASS') { 1 } else { 0 })
         }
-        { $_ -in @('.yml', '.yaml') } {
-            if (-not (Get-Module -ListAvailable -Name powershell-yaml)) {
-                Write-Warning "powershell-yaml is not installed. Using the built-in simple YAML reader for this VM definition."
-                $definition = ConvertFrom-SimpleVmYaml -Path $Path
-                return @($definition.vms)
+
+        'Apply' {
+            if (-not $PlanPath -or -not $PlanHash -or -not $ConfirmTarget) { throw 'Apply needs -PlanPath, -PlanHash, and -ConfirmTarget.' }
+            $params = @{ PlanPath = (Resolve-RepoPath $PlanPath); PlanHash = $PlanHash; ConfirmTarget = $ConfirmTarget; NoPowerOn = $NoPowerOn }
+            foreach ($k in 'VcenterServer', 'VcenterCluster', 'VcenterCredential', 'HyperVPath', 'VmName') {
+                $v = Get-Variable -Name $k -ValueOnly
+                if ($v) { $params[$k] = $v }
             }
-            Ensure-Module -Name powershell-yaml -Required | Out-Null
-            $definition = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Yaml
-            if (-not (Test-DefinitionMember -Object $definition -Name 'vms')) {
-                throw "YAML definition must include a top-level 'vms:' collection."
-            }
-            return @(Get-DefinitionMemberValue -Object $definition -Name 'vms')
-        }
-        default {
-            throw "Unsupported definition file type '$extension'. Use YAML, JSON, or CSV."
-        }
-    }
-}
-
-function ConvertFrom-SimpleVmYaml {
-    param([string]$Path)
-
-    $vms = @()
-    $current = $null
-    $inVms = $false
-    foreach ($line in Get-Content -LiteralPath $Path) {
-        $trimmed = $line.Trim()
-        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith('#')) {
-            continue
+            $result = Invoke-MiiApply @params
+            if ($null -eq $result) { Write-Step 'Apply was not confirmed; nothing ran.' Yellow; Out-Result ([ordered]@{ mode = 'Apply'; status = 'NOT_RUN' }) 1 }
+            foreach ($r in $result.Results) { Write-Step "$($r.vm): $($r.status)" $(if ($r.status -eq 'SUCCESS') { 'Green' } else { 'Red' }) }
+            Write-Step "Receipts: $($result.ApplyDirectory)" Green
+            Out-Result ([ordered]@{ mode = 'Apply'; status = $result.Status; applyDirectory = $result.ApplyDirectory; results = $result.Results }) $(if ($result.Status -eq 'SUCCESS') { 0 } else { 1 })
         }
 
-        if ($trimmed -eq 'vms:') {
-            $inVms = $true
-            continue
+        'InspectIso' {
+            if (-not $IsoPath) { throw 'InspectIso needs -IsoPath.' }
+            $params = @{ Path = (Resolve-RepoPath $IsoPath) }
+            if ($ExpectedSha256) { $params.ExpectedSha256 = $ExpectedSha256 }
+            if ($ImageName) { $params.ImageName = $ImageName }
+            if ($SkipHash) { $params.SkipHash = $true }
+            $r = Test-MiiInstallMedia @params
+            Write-Step "$($r.path): $($r.status) kind=$($r.kind) label=$($r.volumeLabel) sha256=$($r.sha256)" $(if ($r.status -eq 'PASS') { 'Green' } elseif ($r.status -eq 'FAIL') { 'Red' } else { 'Yellow' })
+            foreach ($img in $r.windowsImages) { Write-Step "  image $($img.index): $($img.name)" }
+            foreach ($n in $r.notes) { Write-Step "  note: $n" Yellow }
+            foreach ($f in $r.failures) { Write-Step "  FAIL: $f" Red }
+            Out-Result ([ordered]@{ mode = 'InspectIso'; result = $r }) $(if ($r.status -eq 'FAIL') { 1 } else { 0 })
         }
 
-        if (-not $inVms) {
-            continue
+        'ImportIso' {
+            $params = @{ CacheDirectory = $IsoCachePath; Confirm = $false }
+            if ($IsoPath) { $params.SourcePath = Resolve-RepoPath $IsoPath } elseif ($IsoUri) { $params.Uri = $IsoUri } else { throw 'ImportIso needs -IsoPath or -IsoUri.' }
+            if ($ExpectedSha256) { $params.ExpectedSha256 = $ExpectedSha256 }
+            if ($AllowUnverified) { $params.AllowUnverified = $true }
+            $r = Import-MiiInstallMedia @params
+            Write-Step "Cached $($r.file) sha256=$($r.sha256) verified=$($r.verified) kind=$($r.kind)" Green
+            Out-Result ([ordered]@{ mode = 'ImportIso'; result = $r }) 0
         }
 
-        if ($line -match '^\s*-\s*([A-Za-z0-9_.-]+)\s*:\s*(.*)$') {
-            if ($null -ne $current) {
-                $vms += [pscustomobject]$current
-            }
-            $current = [ordered]@{}
-            $current[$matches[1]] = Convert-SimpleYamlValue -Value $matches[2]
-            continue
-        }
-
-        if ($null -ne $current -and $line -match '^\s{4,}([A-Za-z0-9_.-]+)\s*:\s*(.*)$') {
-            $current[$matches[1]] = Convert-SimpleYamlValue -Value $matches[2]
+        'Dependencies' {
+            $deps = @(Get-MiiDependencyMap -ArtifactRoot $ArtifactRoot -IsoCachePath $IsoCachePath -VcenterServer $VcenterServer)
+            if (-not $Json) { $deps | Format-Table Name, Status, RequiredFor, Location -AutoSize | Out-String -Width 220 | Write-Host }
+            Out-Result ([ordered]@{ mode = 'Dependencies'; dependencies = $deps }) 0
         }
     }
-
-    if ($null -ne $current) {
-        $vms += [pscustomobject]$current
-    }
-
-    [pscustomobject]@{ vms = $vms }
 }
-
-function Convert-SimpleYamlValue {
-    param([string]$Value)
-
-    $clean = $Value.Trim()
-    $commentIndex = $clean.IndexOf(' #')
-    if ($commentIndex -ge 0) {
-        $clean = $clean.Substring(0, $commentIndex).TrimEnd()
-    }
-
-    if ($clean -eq 'null') {
-        return $null
-    }
-
-    if ($clean.StartsWith('[') -and $clean.EndsWith(']')) {
-        $inner = $clean.Substring(1, $clean.Length - 2).Trim()
-        if ($inner.Length -eq 0) {
-            return @()
-        }
-        return @($inner -split ',' | ForEach-Object { Convert-SimpleYamlValue -Value $_ })
-    }
-
-    if (($clean.StartsWith('"') -and $clean.EndsWith('"')) -or ($clean.StartsWith("'") -and $clean.EndsWith("'"))) {
-        return $clean.Substring(1, $clean.Length - 2)
-    }
-
-    if ($clean -match '^-?\d+$') {
-        return [int]$clean
-    }
-
-    if ($clean -match '^-?\d+\.\d+$') {
-        return [double]$clean
-    }
-
-    return $clean
-}
-
-function Normalize-VmDefinition {
-    param([object]$Vm)
-
-    $memoryValue = Get-PropertyValue -Object $Vm -Names @('ramGB', 'memory', 'OSRamSize') -Default 0
-    $memoryGb = ConvertTo-Number -Value $memoryValue
-    if ($memoryGb -gt 128) {
-        $memoryGb = [math]::Round($memoryGb / 1024, 2)
-    }
-
-    $roles = Get-PropertyValue -Object $Vm -Names @('roles') -Default @()
-    if ($roles -is [array]) {
-        $roles = $roles -join ','
-    }
-
-    [pscustomobject]@{
-        Name         = Get-PropertyValue -Object $Vm -Names @('vmname', 'name')
-        Description  = Get-PropertyValue -Object $Vm -Names @('description', 'note') -Default ''
-        GuestId      = Get-PropertyValue -Object $Vm -Names @('os', 'guest_id', 'GuestIDOS')
-        Cpu          = [int](ConvertTo-Number -Value (Get-PropertyValue -Object $Vm -Names @('cpu', 'num_cpus', 'NumCPU') -Default 0))
-        MemoryGB     = $memoryGb
-        DiskGB       = ConvertTo-Number -Value (Get-PropertyValue -Object $Vm -Names @('diskGB', 'disk_size', 'OSDiskSize') -Default 0)
-        SecondDiskGB = ConvertTo-Number -Value (Get-PropertyValue -Object $Vm -Names @('SecondDiskSize') -Default 0)
-        Datastore    = Get-PropertyValue -Object $Vm -Names @('datastore')
-        Network      = Get-PropertyValue -Object $Vm -Names @('network', 'NetworkName', 'vlan')
-        Iso          = Get-PropertyValue -Object $Vm -Names @('iso', 'iso_path', 'ISO') -Default ''
-        Edition      = Get-PropertyValue -Object $Vm -Names @('edition') -Default 'ServerStandard'
-        VmHost       = Get-PropertyValue -Object $Vm -Names @('vmhost') -Default ''
-        Folder       = Get-PropertyValue -Object $Vm -Names @('folder') -Default ''
-        Ip           = Get-PropertyValue -Object $Vm -Names @('ip') -Default ''
-        Subnet       = Get-PropertyValue -Object $Vm -Names @('subnet') -Default ''
-        Gateway      = Get-PropertyValue -Object $Vm -Names @('gateway') -Default ''
-        Dns          = Get-PropertyValue -Object $Vm -Names @('dns', 'primary') -Default ''
-        Domain       = Get-PropertyValue -Object $Vm -Names @('domain') -Default ''
-        Roles        = $roles
-        CodeRepo     = Get-PropertyValue -Object $Vm -Names @('codeRepo') -Default ''
-        AppPoolName  = Get-PropertyValue -Object $Vm -Names @('appPoolName') -Default ''
-        SiteName     = Get-PropertyValue -Object $Vm -Names @('siteName') -Default ''
-        Raw          = $Vm
-    }
-}
-
-function Test-NormalizedVm {
-    param([object]$Vm)
-
-    $issues = New-Object System.Collections.Generic.List[string]
-    foreach ($pair in @(
-            @{ Name = 'Name'; Value = $Vm.Name },
-            @{ Name = 'GuestId'; Value = $Vm.GuestId },
-            @{ Name = 'Datastore'; Value = $Vm.Datastore },
-            @{ Name = 'Network'; Value = $Vm.Network }
-        )) {
-        if ([string]::IsNullOrWhiteSpace($pair.Value)) {
-            $issues.Add("Missing $($pair.Name).")
-        }
-    }
-
-    if ($Vm.Cpu -le 0) { $issues.Add('CPU must be greater than zero.') }
-    if ($Vm.MemoryGB -le 0) { $issues.Add('MemoryGB must be greater than zero.') }
-    if ($Vm.DiskGB -le 0) { $issues.Add('DiskGB must be greater than zero.') }
-
-    if ([string]::IsNullOrWhiteSpace($Vm.Iso) -and $Vm.GuestId -match 'windows' -and $SkipIsoDownload) {
-        $issues.Add('Windows VM has no ISO and ISO download is skipped.')
-    }
-
-    return $issues
-}
-
-function New-VmPlan {
-    param(
-        [object]$Vm,
-        [string[]]$Issues,
-        [string]$ArtifactDirectory
-    )
-
-    $unattendPath = Join-Path $ArtifactDirectory ("autounattend_{0}.xml" -f $Vm.Name)
-    [ordered]@{
-        name           = $Vm.Name
-        guestId        = $Vm.GuestId
-        cpu            = $Vm.Cpu
-        memoryGB       = $Vm.MemoryGB
-        diskGB         = $Vm.DiskGB
-        datastore      = $Vm.Datastore
-        network        = $Vm.Network
-        iso            = $Vm.Iso
-        artifactPath   = $unattendPath
-        issues         = @($Issues)
-        plannedActions = @(
-            'Validate definition row',
-            'Resolve or download ISO',
-            'Generate unattended install file',
-            'Create empty vSphere VM',
-            'Attach ISO and install artifact',
-            'Set network adapter and optional second disk',
-            'Power on VM',
-            'Run post deployment payload'
-        )
-    }
-}
-
-function Save-BuildPlan {
-    param(
-        [object]$Plan,
-        [string]$Path
-    )
-
-    $Plan | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding UTF8 -WhatIf:$false
-}
-
-function Ensure-Iso {
-    param(
-        [object]$Vm
-    )
-
-    if (-not [string]::IsNullOrWhiteSpace($Vm.Iso)) {
-        return $Vm.Iso
-    }
-
-    if ($SkipIsoDownload) {
-        return ''
-    }
-
-    $isoScript = Join-Path $PSScriptRoot 'Get-WindowsISO.ps1'
-    if (-not (Test-Path -LiteralPath $isoScript)) {
-        throw "ISO helper not found: $isoScript"
-    }
-
-    if ($PSCmdlet.ShouldProcess($Vm.Name, "Download ISO for $($Vm.Edition)")) {
-        & $isoScript -Edition $Vm.Edition -OutPath $IsoCachePath
-    }
-
-    return ''
-}
-
-function New-UnattendArtifact {
-    param(
-        [object]$Vm,
-        [string]$Path
-    )
-
-    if ($SkipUnattend -or $Vm.GuestId -notmatch 'windows') {
-        return
-    }
-
-    $unattendScript = Join-Path $PSScriptRoot 'New-UnattendXML.ps1'
-    if (-not (Test-Path -LiteralPath $unattendScript)) {
-        throw "Unattend helper not found: $unattendScript"
-    }
-
-    $params = @{
-        Path         = $Path
-        ComputerName = $Vm.Name
-    }
-
-    $localPasswordText = Convert-SecureStringToPlainText -Value $LocalAdminPassword
-    if ($localPasswordText) {
-        $params.LocalAdminPassword = $localPasswordText
-    }
-
-    if ($Vm.Domain -and $DomainJoinCredential) {
-        $params.JoinDomain = $Vm.Domain
-        $params.DomainAccount = $DomainJoinCredential.UserName
-        $params.DomainPassword = Convert-SecureStringToPlainText -Value $DomainJoinCredential.Password
-    }
-
-    if ($PSCmdlet.ShouldProcess($Path, 'Generate autounattend.xml')) {
-        & $unattendScript @params
-    }
-}
-
-function Get-TargetVmHost {
-    param([object]$Vm)
-
-    if (-not [string]::IsNullOrWhiteSpace($Vm.VmHost)) {
-        return Get-VMHost -Name $Vm.VmHost
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($VcenterCluster)) {
-        return Get-Cluster -Name $VcenterCluster | Get-VMHost | Sort-Object -Property MemoryUsageGB | Select-Object -First 1
-    }
-
-    throw "No vmhost was supplied in the definition and -VcenterCluster was not provided."
-}
-
-function Invoke-VSphereProvision {
-    param([object]$Vm)
-
-    if ($SkipVCenter) {
-        Write-Step "Skipping vCenter action for $($Vm.Name)" Yellow
-        return
-    }
-
-    if ($WhatIfPreference) {
-        $PSCmdlet.ShouldProcess($Vm.Name, 'Create vSphere VM') | Out-Null
-        if ($Vm.Iso) {
-            $PSCmdlet.ShouldProcess($Vm.Name, "Attach ISO $($Vm.Iso)") | Out-Null
-        }
-        if ($Vm.SecondDiskGB -gt 0) {
-            $PSCmdlet.ShouldProcess($Vm.Name, "Add $($Vm.SecondDiskGB) GB second disk") | Out-Null
-        }
-        if (-not $NoPowerOn) {
-            $PSCmdlet.ShouldProcess($Vm.Name, 'Power on VM') | Out-Null
-        }
-        return
-    }
-
-    Ensure-Module -Name VMware.PowerCLI -Required | Out-Null
-
-    if (-not $VcenterServer) {
-        throw 'VcenterServer is required unless -SkipVCenter or -PlanOnly is used.'
-    }
-
-    if (-not $VcenterCredential) {
-        $VcenterCredential = Get-Credential -Message "Credentials for $VcenterServer"
-    }
-
-    if (-not (Get-VIServer -Server $VcenterServer -ErrorAction SilentlyContinue)) {
-        if ($PSCmdlet.ShouldProcess($VcenterServer, 'Connect to vCenter')) {
-            Connect-VIServer -Server $VcenterServer -Credential $VcenterCredential | Out-Null
-        }
-    }
-
-    $targetHost = Get-TargetVmHost -Vm $Vm
-    $newVmParams = @{
-        VMHost            = $targetHost
-        Name              = $Vm.Name
-        Datastore         = $Vm.Datastore
-        DiskGB            = $Vm.DiskGB
-        DiskStorageFormat = 'Thin'
-        MemoryGB          = $Vm.MemoryGB
-        GuestId           = $Vm.GuestId
-        NumCpu            = $Vm.Cpu
-        NetworkName       = $Vm.Network
-    }
-
-    if ($Vm.Description) { $newVmParams.Notes = $Vm.Description }
-    if ($Vm.Folder) { $newVmParams.Location = $Vm.Folder }
-
-    if (-not $PSCmdlet.ShouldProcess($Vm.Name, 'Create vSphere VM')) {
-        return
-    }
-
-    $newVm = New-VM @newVmParams
-
-    if ($Vm.Iso) {
-        New-CDDrive -VM $newVm -IsoPath $Vm.Iso -StartConnected:$true | Out-Null
-    }
-
-    $adapter = Get-VM -Name $Vm.Name | Get-NetworkAdapter -Name 'Network adapter 1' -ErrorAction SilentlyContinue
-    if ($adapter) {
-        Set-NetworkAdapter -NetworkAdapter $adapter -Type Vmxnet3 -Confirm:$false | Out-Null
-    }
-
-    if ($Vm.SecondDiskGB -gt 0) {
-        New-HardDisk -VM $newVm -CapacityGB $Vm.SecondDiskGB -Datastore $Vm.Datastore | Out-Null
-    }
-
-    if (-not $NoPowerOn) {
-        Start-VM -VM $newVm | Out-Null
-    }
-}
-
-$definitionFullPath = Resolve-FullPath -Path $DefinitionPath
-$artifactRootFullPath = Resolve-FullPath -Path $ArtifactRoot
-$IsoCachePath = Resolve-FullPath -Path $IsoCachePath
-$runStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$runDirectory = Join-Path $artifactRootFullPath $runStamp
-
-Write-Step "Reading definition $definitionFullPath"
-$rawVms = Read-BuildDefinition -Path $definitionFullPath
-$normalizedVms = @($rawVms | ForEach-Object { Normalize-VmDefinition -Vm $_ })
-
-if ($normalizedVms.Count -eq 0) {
-    throw 'No VM definitions were found.'
-}
-
-New-Item -ItemType Directory -Path $runDirectory -Force -WhatIf:$false | Out-Null
-New-Item -ItemType Directory -Path $IsoCachePath -Force -WhatIf:$false | Out-Null
-
-$plan = [ordered]@{
-    generatedAt     = (Get-Date).ToString('o')
-    definitionPath  = $definitionFullPath
-    artifactRoot    = $runDirectory
-    vcenterServer   = $VcenterServer
-    vcenterCluster  = $VcenterCluster
-    mode            = $(if ($PlanOnly) { 'PlanOnly' } elseif ($WhatIfPreference) { 'WhatIf' } else { 'Apply' })
-    azurePatPresent = -not [string]::IsNullOrWhiteSpace($AzureDevOpsPat)
-    vms             = @()
-}
-
-$hasErrors = $false
-foreach ($vm in $normalizedVms) {
-    Write-Step "Planning $($vm.Name)"
-    $issues = @(Test-NormalizedVm -Vm $vm)
-    if ($issues.Count -gt 0) {
-        $hasErrors = $true
-        foreach ($issue in $issues) {
-            Write-Warning "$($vm.Name): $issue"
-        }
-    }
-
-    $vmPlan = New-VmPlan -Vm $vm -Issues $issues -ArtifactDirectory $runDirectory
-    $plan.vms += $vmPlan
-
-    if ($issues.Count -gt 0 -or $PlanOnly) {
-        continue
-    }
-
-    $vm.Iso = Ensure-Iso -Vm $vm
-    New-UnattendArtifact -Vm $vm -Path $vmPlan.artifactPath
-    Invoke-VSphereProvision -Vm $vm
-}
-
-$planPath = Join-Path $runDirectory 'build-plan.json'
-Save-BuildPlan -Plan $plan -Path $planPath
-Write-Step "Build plan written to $planPath" Green
-
-if ($hasErrors) {
-    throw 'One or more VM definitions failed validation. See build-plan.json for details.'
-}
-
-if ($PlanOnly) {
-    Write-Step 'PlanOnly complete. No vCenter provisioning was attempted.' Green
+catch {
+    if ($Json) { [ordered]@{ mode = $Mode; error = $_.Exception.Message } | ConvertTo-Json -Compress | Write-Output }
+    else { Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red }
+    exit 2
 }

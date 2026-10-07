@@ -1,8 +1,9 @@
 vms:
   - vmname: "iis-web-01"
     description: "IIS frontend server 1"
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
+    iso: "[datastore1] iso/en_windows_server_2022_x64.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"
     cpu: 4
     ramGB: 8
     diskGB: 60

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en" class="glass">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; connect-src 'self'">
+  <title>Multi Install ISO</title>
+  <link rel="stylesheet" href="glimmer/glimmer-badge.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
+  </div>
+
+  <div class="shell">
+    <nav class="sidebar panel" aria-label="Sections">
+      <div class="brand">
+        <img src="icon.png" alt="" width="34" height="34">
+        <div>
+          <strong>Multi Install ISO</strong>
+          <small>VM builds from install media</small>
+        </div>
+      </div>
+
+      <ul class="nav" role="list">
+        <li><button class="nav-item" data-nav="overview" aria-keyshortcuts="Control+1"><svg viewBox="0 0 24 24"><path d="M4 13h7V4H4zm0 7h7v-5H4zm9 0h7v-9h-7zm0-16v5h7V4z"/></svg>Overview</button></li>
+        <li><button class="nav-item" data-nav="definition" aria-keyshortcuts="Control+2"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6zm8 1.5V8h4.5M9 12h8M9 16h8"/></svg>Definition</button></li>
+        <li><button class="nav-item" data-nav="plan" aria-keyshortcuts="Control+3"><svg viewBox="0 0 24 24"><path d="M9 5h11M9 12h11M9 19h11M4 5h1M4 12h1M4 19h1"/></svg>Plan</button></li>
+        <li><button class="nav-item" data-nav="media" aria-keyshortcuts="Control+4"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>Answer media</button></li>
+        <li><button class="nav-item" data-nav="iso" aria-keyshortcuts="Control+5"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v6M21 12h-6"/></svg>Install ISOs</button></li>
+        <li><button class="nav-item" data-nav="apply" aria-keyshortcuts="Control+6"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Apply</button></li>
+        <li><button class="nav-item" data-nav="runs" aria-keyshortcuts="Control+7"><svg viewBox="0 0 24 24"><path d="M12 7v5l3 3"/><circle cx="12" cy="12" r="9"/></svg>Runs</button></li>
+        <li><button class="nav-item" data-nav="deps" aria-keyshortcuts="Control+8"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Dependencies</button></li>
+        <li><button class="nav-item" data-nav="settings" aria-keyshortcuts="Control+9"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Settings</button></li>
+      </ul>
+
+      <div class="sidebar-foot">
+        <button id="versionButton" class="version-button glimmer-version" data-preset="frost" data-state="idle" type="button"
+                title="About this build. Right-click to restyle the orb.">
+          <span class="glimmer-dot" aria-hidden="true"></span><span id="versionLabel">v…</span>
+        </button>
+        <span id="engineState" class="chip">Engine…</span>
+      </div>
+    </nav>
+
+    <main class="content" id="main" tabindex="-1">
+      <header class="page-head">
+        <div>
+          <h1 id="pageTitle">Overview</h1>
+          <p id="pageSub" class="muted"></p>
+        </div>
+        <div class="head-actions" id="headActions"></div>
+      </header>
+
+      <!-- Overview -->
+      <section class="view" data-view="overview">
+        <div class="grid two">
+          <article class="panel card">
+            <h2>Where things stand</h2>
+            <dl class="facts">
+              <dt>Definition</dt><dd id="ovDefinition" class="mono">—</dd>
+              <dt>Last plan</dt><dd id="ovPlan">—</dd>
+              <dt>Answer media</dt><dd id="ovMedia">—</dd>
+              <dt>Artifacts</dt><dd id="ovArtifacts" class="mono">—</dd>
+            </dl>
+            <div class="actions">
+              <button class="btn primary" data-goto="definition">Open definition</button>
+              <button class="btn" data-goto="runs">Earlier runs</button>
+            </div>
+          </article>
+          <article class="panel card">
+            <h2>Next step</h2>
+            <p id="ovNext" class="lead">Loading…</p>
+            <ol class="steps">
+              <li><b>Plan</b> validates the definition and writes a plan with a SHA-256 hash. Nothing outside this PC is contacted.</li>
+              <li><b>Answer media</b> builds one small ISO per VM (autounattend.xml or ks.cfg), reads it back, and records hashes.</li>
+              <li><b>Apply</b> creates the VMs from the reviewed plan hash, one at a time, writing a receipt per VM.</li>
+            </ol>
+          </article>
+        </div>
+        <article class="panel card">
+          <h2>What this release has proven</h2>
+          <p class="muted">Honest status for this build. Anything that needs a hypervisor has not been run yet.</p>
+          <div class="table-wrap solid">
+            <table>
+              <thead><tr><th>Capability</th><th>Status</th><th>Evidence</th></tr></thead>
+              <tbody>
+                <tr><td>Definition parsing and validation (YAML, JSON, CSV)</td><td><span class="chip ok">Proven offline</span></td><td>Test suite: identical plans from all three formats; bad values, duplicates, invalid guest IDs blocked</td></tr>
+                <tr><td>Immutable plan with SHA-256</td><td><span class="chip ok">Proven offline</span></td><td>Tamper and wrong-hash tests</td></tr>
+                <tr><td>Answer-media ISOs</td><td><span class="chip ok">Proven offline</span></td><td>Built, read back byte-for-byte, and mounted by Windows</td></tr>
+                <tr><td>Install ISO inspection</td><td><span class="chip warn">Partly proven</span></td><td>Proven on test images; run Install ISOs on your real media</td></tr>
+                <tr><td>Windows Setup / Anaconda using the answer media</td><td><span class="chip off">Not run</span></td><td>Needs a hypervisor and real install media</td></tr>
+                <tr><td>vSphere apply</td><td><span class="chip off">Not run</span></td><td>No vCenter tested; first run must be a bounded non-production test</td></tr>
+                <tr><td>Hyper-V apply</td><td><span class="chip off">Not run</span></td><td>Hyper-V is not enabled on the build machine</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- Definition -->
+      <section class="view" data-view="definition" hidden>
+        <article class="panel card">
+          <div class="pathbar">
+            <span class="mono path" id="defPath">—</span>
+            <span id="defBadges"></span>
+            <div class="spacer"></div>
+            <button class="btn" id="defOpen">Open…</button>
+            <button class="btn" id="defReload">Reload</button>
+            <button class="btn" id="defSave" aria-keyshortcuts="Control+S">Save</button>
+            <button class="btn" id="defSaveAs">Save as…</button>
+          </div>
+          <label class="sr-only" for="defText">Definition text</label>
+          <textarea id="defText" class="editor solid" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+        </article>
+        <article class="panel card">
+          <h2>Plan options</h2>
+          <div class="form-row">
+            <fieldset class="segmented" id="targetPick">
+              <legend>Target</legend>
+              <label><input type="radio" name="target" value="vsphere" checked> vSphere</label>
+              <label><input type="radio" name="target" value="hyperv"> Hyper-V (this PC)</label>
+            </fieldset>
+            <label class="field" data-vsphere>vCenter server<input id="vcServer" placeholder="vcsa.lab.local" autocomplete="off"></label>
+            <label class="field" data-vsphere>Cluster<input id="vcCluster" placeholder="Lab" autocomplete="off"></label>
+            <div class="spacer"></div>
+            <button class="btn primary big" id="planButton" aria-keyshortcuts="Control+Enter">Validate and plan</button>
+          </div>
+          <p class="muted small">Planning reads the file above as saved. Save first if you edited it.</p>
+        </article>
+      </section>
+
+      <!-- Plan -->
+      <section class="view" data-view="plan" hidden>
+        <div id="planEmpty" class="panel card empty">No plan yet. Open a definition and choose <b>Validate and plan</b>, or pick one from <a href="#" data-goto="runs">Runs</a>.</div>
+        <div id="planBody" hidden>
+          <article class="panel card">
+            <div class="plan-head">
+              <span id="planReady" class="chip">—</span>
+              <span class="muted">Target <b id="planTarget">—</b></span>
+              <span class="muted">Generated <b id="planWhen">—</b></span>
+              <div class="spacer"></div>
+              <button class="btn" id="planOpenFolder">Open folder</button>
+              <button class="btn primary" id="planToMedia">Build answer media</button>
+            </div>
+            <div class="hash-row">
+              <span class="muted">Plan SHA-256</span>
+              <code id="planHash" class="mono">—</code>
+              <button class="btn small" id="planCopyHash">Copy</button>
+            </div>
+            <p class="muted small mono" id="planDefinition"></p>
+          </article>
+          <div class="table-wrap solid panel">
+            <table id="planTable">
+              <thead><tr><th>VM</th><th>OS</th><th>Guest ID</th><th>CPU</th><th>RAM</th><th>Disk</th><th>Network</th><th>IP</th><th>MAC</th><th>Status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Answer media -->
+      <section class="view" data-view="media" hidden>
+        <div id="mediaEmpty" class="panel card empty">Plan first. Answer media is built from a reviewed plan.</div>
+        <div id="mediaBody" hidden>
+          <article class="panel card">
+            <div class="plan-head">
+              <span id="mediaState" class="chip">—</span>
+              <span class="muted">For plan <code id="mediaPlanHash" class="mono">—</code></span>
+              <div class="spacer"></div>
+              <button class="btn" id="mediaOpenFolder">Open folder</button>
+              <button class="btn" id="mediaVerify">Verify again</button>
+              <button class="btn danger" id="mediaDelete">Delete media</button>
+              <button class="btn primary" id="mediaBuild">Build answer media</button>
+            </div>
+            <p class="notice">Answer media holds the credentials you enter (encoded, not encrypted). It is stored with access limited to you, SYSTEM, and Administrators. Delete it once the VMs are built.</p>
+          </article>
+          <div class="table-wrap solid panel">
+            <table id="mediaTable">
+              <thead><tr><th>VM</th><th>Label</th><th>Files</th><th>Size</th><th>SHA-256</th><th>Read-back</th><th>Verify</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Install ISOs -->
+      <section class="view" data-view="iso" hidden>
+        <article class="panel card">
+          <h2>Check an install ISO</h2>
+          <p class="muted">Confirms the file is the media you think it is: SHA-256 against the publisher's value, the file system, and the Windows editions inside (or Linux installer markers). Nothing is copied or changed.</p>
+          <div class="form-grid">
+            <label class="field wide">ISO file
+              <span class="input-with-btn"><input id="isoPath" class="mono" placeholder="D:\ISOs\SERVER_EVAL_x64FRE_en-us.iso"><button class="btn" id="isoBrowse">Browse…</button></span>
+            </label>
+            <label class="field wide">Expected SHA-256 (from the publisher)<input id="isoSha" class="mono" maxlength="64" placeholder="64 hex characters" autocomplete="off"></label>
+            <label class="field">Image name to require (Windows, optional)<input id="isoImage" placeholder="Windows Server 2022 SERVERSTANDARD" autocomplete="off"></label>
+            <label class="check"><input type="checkbox" id="isoSkipHash"> Quick look (skip hashing)</label>
+          </div>
+          <div class="actions"><button class="btn primary" id="isoInspect">Inspect</button></div>
+        </article>
+        <article class="panel card" id="isoResult" hidden>
+          <div class="plan-head"><span id="isoStatus" class="chip">—</span><span id="isoSummary" class="muted"></span></div>
+          <dl class="facts" id="isoFacts"></dl>
+          <div class="table-wrap solid" id="isoImagesWrap" hidden>
+            <table><thead><tr><th>Index</th><th>Image name</th><th>Edition</th><th>Version</th></tr></thead><tbody id="isoImages"></tbody></table>
+          </div>
+          <ul class="notes" id="isoNotes"></ul>
+        </article>
+      </section>
+
+      <!-- Apply -->
+      <section class="view" data-view="apply" hidden>
+        <div id="applyEmpty" class="panel card empty">Plan and build answer media first.</div>
+        <div id="applyBody" hidden>
+          <article class="panel card">
+            <h2>Readiness</h2>
+            <ul class="checklist" id="applyChecks"></ul>
+            <div class="actions"><button class="btn" id="applyRecheck">Check again</button></div>
+          </article>
+          <article class="panel card">
+            <h2>Run apply from a terminal</h2>
+            <p class="muted">This release does not create VMs from the window. Apply has not yet been proven against a real vCenter or Hyper-V host, so the first runs should be watched in PowerShell, which asks for confirmation and prints each step. Every run writes an attempt record, a receipt per VM, and a summary into the run folder.</p>
+            <pre class="command solid" id="applyCommand">—</pre>
+            <p class="muted small" id="applyNote"></p>
+            <div class="actions"><button class="btn primary" id="applyCopy">Copy command</button><button class="btn" id="applyRunbook">Open runbook</button></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Runs -->
+      <section class="view" data-view="runs" hidden>
+        <article class="panel card">
+          <div class="plan-head"><span class="muted">Folder</span><code class="mono" id="runsRoot">—</code><div class="spacer"></div><button class="btn" id="runsOpenRoot">Open folder</button><button class="btn" id="runsRefresh">Refresh</button></div>
+        </article>
+        <div class="table-wrap solid panel">
+          <table id="runsTable">
+            <thead><tr><th>Run</th><th>Definition</th><th>Target</th><th>VMs</th><th>Plan</th><th>Media</th><th>Apply</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Dependencies -->
+      <section class="view" data-view="deps" hidden>
+        <article class="panel card">
+          <div class="plan-head"><span class="muted">Everything this app and its engine rely on, and where it lives.</span><div class="spacer"></div><button class="btn" id="depsRefresh">Refresh</button></div>
+        </article>
+        <h2 class="section-title">App</h2>
+        <div class="table-wrap solid panel"><table><thead><tr><th>Dependency</th><th>Status</th><th>Needed for</th><th>Location</th><th>Detail</th></tr></thead><tbody id="depsApp"></tbody></table></div>
+        <h2 class="section-title">Engine</h2>
+        <div class="table-wrap solid panel"><table><thead><tr><th>Dependency</th><th>Status</th><th>Needed for</th><th>Location</th><th>Detail</th></tr></thead><tbody id="depsEngine"></tbody></table></div>
+      </section>
+
+      <!-- Settings -->
+      <section class="view" data-view="settings" hidden>
+        <div class="grid two">
+          <article class="panel card">
+            <h2>Appearance</h2>
+            <label class="switch"><input type="checkbox" id="setGlass"><span class="track" aria-hidden="true"></span>Glass surfaces</label>
+            <p class="muted small" id="glassForced" hidden></p>
+            <label class="field">Opacity <output id="setOpacityOut"></output><input type="range" id="setOpacity" min="0.2" max="0.95" step="0.05"></label>
+            <label class="field">Blur <output id="setBlurOut"></output><input type="range" id="setBlur" min="0" max="40" step="1"></label>
+            <div class="actions"><button class="btn" id="setResetGlass">Reset glass</button></div>
+          </article>
+          <article class="panel card">
+            <h2>Window</h2>
+            <label class="switch"><input type="checkbox" id="setTray"><span class="track" aria-hidden="true"></span>Close to tray</label>
+            <p class="muted small">When on, closing the window keeps the app in the notification area; use <b>Exit</b> in the tray menu to quit. When off, closing the window exits.</p>
+          </article>
+          <article class="panel card">
+            <h2>Storage</h2>
+            <dl class="facts"><dt>Artifacts</dt><dd class="mono" id="setArtifacts">—</dd><dt>Engine</dt><dd class="mono" id="setEngine">—</dd></dl>
+            <div class="actions"><button class="btn" id="setArtifactsChange">Change…</button><button class="btn" id="setArtifactsOpen">Open</button></div>
+          </article>
+          <article class="panel card">
+            <h2>Help and diagnostics</h2>
+            <div class="actions wrap">
+              <button class="btn" data-doc="RUNBOOK">Runbook</button>
+              <button class="btn" data-doc="PREREQUISITES">Prerequisites</button>
+              <button class="btn" data-doc="DEFINITION_AUTHORING">Definition guide</button>
+              <button class="btn" data-doc="EVALUATION">Evaluation</button>
+              <button class="btn" id="setDiagnostics">Copy diagnostics</button>
+            </div>
+            <p class="muted small">Diagnostics replace your profile path and never include credentials.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="about" class="panel">
+    <h2>Multi Install ISO <span id="aboutVersion"></span></h2>
+    <dl class="facts" id="aboutFacts"></dl>
+    <p class="muted small">Version orb by Glimmer (MIT), after "orb" by LerSent001 (MIT). Right-click the version button to restyle it.</p>
+    <form method="dialog" class="actions"><button class="btn primary">Close</button></form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="glimmer/glimmer-badge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

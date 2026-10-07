@@ -1,0 +1,18 @@
+# Rocky Linux 9 from the DVD ISO. The kickstart goes on an OEMDRV-labelled answer ISO,
+# which Anaconda loads automatically. Build media with -RootPasswordHash (openssl passwd -6).
+vms:
+  - vmname: "rocky-app-01"
+    iso: "[datastore1] iso/Rocky-9-latest-x86_64-dvd.iso"
+    os: "rockylinux_64Guest"
+    cpu: 2
+    ramGB: 4
+    diskGB: 40
+    datastore: "datastore1"
+    network: "VM Network"
+    ip: "192.168.10.40"
+    subnet: "24"
+    gateway: "192.168.10.1"
+    dns: ["192.168.10.10"]
+    timeZone: "America/Denver"
+    postInstall:
+      - "dnf -y install git"

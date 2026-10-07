@@ -1,131 +1,83 @@
 # Multi Install ISO
 
-Plan, validate, and eventually provision fresh vSphere virtual machines from installation media without depending on templates or golden images.
+Build fresh VMs from installation ISOs, without templates or golden images: describe the VMs, get a reviewed plan with a hash, build unattended answer media, and apply it to vSphere or local Hyper-V with a receipt for every step.
 
-> **Current status: DEVELOPMENT / NO-GO FOR PROVISIONING**
->
-> Planning is the only approved workflow. Do not use the current repository to create VMs until the apply gates in the [implementation plan](docs/IMPLEMENTATION_PLAN.md) are complete and verified in non-production.
+> **Status (0.9.0):** planning, validation, answer-media ISOs, install-ISO checks, and the desktop app are proven offline on Windows. **No VM has been built yet**: the vSphere and Hyper-V apply paths, and Windows Setup / Anaconda using the generated media, have not been run. See [docs/EVALUATION.md](docs/EVALUATION.md).
 
-## Current capability
-
-| Capability | Status | Evidence or limitation |
-| --- | --- | --- |
-| PowerShell parsing | Working | All current PowerShell files parse successfully. |
-| JSON planning | Working | `Build-Cluster.ps1 -PlanOnly` produces a reviewable plan. |
-| YAML planning | Working | Supports `powershell-yaml` hashtables and the built-in simple reader. |
-| C# prototype build | Working | The current WinForms prototype builds on .NET 8. It is not the target operator app. |
-| ISO acquisition | Not ready | The existing helper resolves a URL but does not complete and verify the ISO download. |
-| Unattended media attachment | Not ready | Answer-file generation is not yet attached to a vSphere VM. |
-| VM provisioning | Locked | Apply remains out of service until immutable plans, confirmations, receipts, and non-production proof exist. |
-| Published operator app | Not ready | No self-contained release or published smoke proof exists yet. |
-
-## Safe quick start
-
-Requirements:
-
-- PowerShell 7: `pwsh.exe`
-- `powershell-yaml` for full YAML support
-- Git for repository operations
-- .NET 8 SDK for the current C# prototype
-
-Create a plan without contacting vCenter:
-
-```powershell
-pwsh -NoProfile -File .\Build-Cluster.ps1 `
-  -DefinitionPath .\cluster-vms.yaml `
-  -PlanOnly
-```
-
-The command writes a plan under:
-
-```text
-artifacts\<timestamp>\build-plan.json
-```
-
-Review the VM names, guest IDs, datastores, networks, ISO paths, sizing, roles, and reported issues. `PlanOnly` does not prove those objects exist in vCenter.
-
-## Intended operator workflow
+## How it works
 
 ```mermaid
 flowchart LR
-    A["Definition file"] --> B["Parse and validate"]
-    B --> C["Write immutable plan"]
-    C --> D["Read-only vCenter preflight"]
-    D --> E["Exact apply confirmation"]
-    E --> F["Provision one VM at a time"]
-    F --> G["Write per-VM receipt and final summary"]
+    A["Definition<br/>YAML / JSON / CSV"] --> B["Plan<br/>validate + SHA-256"]
+    B --> C["Answer media<br/>autounattend / ks.cfg ISO<br/>read back + hashed"]
+    I["Install ISO<br/>SHA-256 + edition check"] --> D
+    C --> D["Apply<br/>hash + target confirmed<br/>one VM at a time"]
+    D --> E["Receipts<br/>attempt, per VM, summary"]
 ```
 
-The implementation is being built in gated phases. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for scope, acceptance criteria, and the current work item.
+## Desktop app
 
-## Definition format
+`dist\MultiInstallIso-<version>-win-x64\MultiInstallIso.exe` (built by `build.cmd`). Pages: Overview, Definition (edit, plan), Plan, Answer media, Install ISOs, Apply (readiness and the exact command), Runs, Dependencies, Settings.
 
-The preferred YAML shape is:
+- Liquid Glass look with Settings for glass on/off, opacity, and blur (and Reset). Turns solid automatically when Windows transparency is off, high contrast or forced colours are on, or blur is unavailable.
+- Native title bar. Tray icon with version, Show, Hide, Close to tray (on by default), and Exit. A second launch brings back the running window.
+- Version button with the Glimmer orb; it reflects real busy, success, and error state.
+- Credentials for answer media are entered in a native dialog and passed to the engine on stdin.
+- `MultiInstallIso.exe --smoke` runs an offline self-check, including a real plan and answer-media build. `--snapshot <png> [--glass on|off] [--view <page>]` renders a page to an image.
 
-```yaml
-vms:
-  - vmname: "iis-web-01"
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
-    cpu: 4
-    ramGB: 8
-    diskGB: 60
-    datastore: "datastore1"
-    network: "VM Network"
+## Command line
+
+```powershell
+pwsh -File .\Build-Cluster.ps1 -DefinitionPath .\cluster-vms.yaml -PlanOnly                     # plan
+pwsh -File .\Build-Cluster.ps1 -Mode Media -PlanPath <plan> -PlanHash <sha256> -AdminCredential (Get-Credential Administrator)
+pwsh -File .\Build-Cluster.ps1 -Mode VerifyMedia -PlanPath <plan>
+pwsh -File .\Build-Cluster.ps1 -Mode InspectIso -IsoPath <iso> -ExpectedSha256 <sha256> -ImageName "Windows Server 2022 SERVERSTANDARD"
+pwsh -File .\Build-Cluster.ps1 -Mode Apply -PlanPath <plan> -PlanHash <sha256> -ConfirmTarget <vcenter-or-computer>
+pwsh -File .\Build-Cluster.ps1 -Mode Dependencies
 ```
 
-Supported planning inputs:
+Add `-Json` for machine-readable output. Exit codes: 0 success, 1 blocking issue or failed check, 2 error. The full procedure is in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
-- YAML: `cluster-vms.yaml`
-- JSON: `templates/powercli-vms.json`
-- CSV: `templates/powercli-vms.csv`
-- Terraform tfvars: `templates/terraform.tfvars.json`
-- Kubernetes pod definitions: `templates/kubernetes-pods.json`
-
-See [docs/DEFINITION_AUTHORING.md](docs/DEFINITION_AUTHORING.md) for field-level guidance.
-
-## Repository map
+## Repository
 
 | Path | Purpose |
 | --- | --- |
-| `Build-Cluster.ps1` | Current plan and provisioning entry point |
-| `cluster-vms.yaml` | Four-node planning sample |
-| `tests/` | Offline regression tests; no vCenter writes |
-| `src/MultiInstallIso.Orchestrator/` | Existing .NET 8 WinForms prototype |
-| `schemas/` | JSON schemas for supported definition types |
-| `templates/` | Starter definition files |
-| `docs/RUNBOOK.md` | Current operator procedure |
-| `docs/IMPLEMENTATION_PLAN.md` | Gated rebuild plan and acceptance criteria |
-| `docs/AUDIT.md` | Historical audit notes; not current runtime proof |
+| `Build-Cluster.ps1` | Command-line entry point |
+| `powershell\MultiInstallIso\` | Engine module: YAML reader, validation, plans, answer files, ISO writer/reader, media, apply, providers, dependency map |
+| `guest\PostDeploy.ps1` | Runs inside new Windows VMs at first logon (Windows PowerShell 5.1) |
+| `src\MultiInstallIso.App\` | .NET 10 WPF + WebView2 desktop app |
+| `cluster-vms.yaml`, `examples\`, `templates\` | Sample definitions |
+| `schemas\` | JSON schemas |
+| `tests\Run-Tests.ps1` | Offline test suite (no extra modules) |
+| `adapters\` | Terraform, Kubernetes, and Azure Pipelines (plan-only) adapters |
+| `tools\` | Release build and icon generation |
+| `legacy\` | Retired scripts kept for reference |
+| `docs\` | Runbook, prerequisites, definition guide, evaluation, plan |
 
-## Security boundaries
+## Build
 
-- Do not store passwords, PATs, product keys, or domain-join credentials in definition files.
-- Do not pass secrets through free-form command arguments or copy them into logs.
-- Generated answer files must be treated as sensitive, access-controlled artifacts with a defined cleanup lifecycle.
-- Downloaded scripts, ISOs, modules, and providers must be pinned and verified before execution.
-- `PlanOnly`, parser success, and a successful C# build do not authorize infrastructure writes.
-
-## Current prototype
-
-Build the existing WinForms prototype for inspection:
-
-```powershell
-dotnet build .\src\MultiInstallIso.Orchestrator\MultiInstallIso.Orchestrator.csproj `
-  --configuration Release
+```bat
+build.cmd
 ```
 
-This proves compilation only. The target application will be a WPF/WebView2 operator shell with typed bridge messages, dependency and credential status, immutable plan review, guarded apply, redacted diagnostics, and a self-contained `win-x64` release.
+Checks that the version in `Directory.Build.props` matches the module manifest and has a CHANGELOG entry, runs the tests, publishes a self-contained single-file exe to `dist\MultiInstallIso-<version>-win-x64\`, smoke-tests the published exe, then writes a zip and SHA-256 sums.
 
-## Documentation
+Tests alone: `pwsh -File .\tests\Run-Tests.ps1`.
 
-- [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
-- [Operator runbook](docs/RUNBOOK.md)
-- [Prerequisites](docs/PREREQUISITES.md)
-- [Definition authoring](docs/DEFINITION_AUTHORING.md)
-- [Existing UI mockup](docs/MOCKUP.md)
-- [Historical audit notes](docs/AUDIT.md)
+## Security
 
-## License
+- Definitions never hold secrets; fields that look like secrets are rejected.
+- Answer media holds credentials (the admin password is encoded, not encrypted; domain join is plain text, as Windows requires). It is written to a folder limited to you, SYSTEM, and Administrators. Delete it after the build.
+- Install ISOs are verified against the publisher's SHA-256 before use. Nothing is downloaded or installed implicitly.
+
+Report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
+
+## Disclaimer
+
+This tool creates and powers on virtual machines and writes credentials onto installation media. It is provided "as is", without warranty of any kind (see [LICENSE](LICENSE)). Test every definition against non-production infrastructure first; you are responsible for what it builds. Not affiliated with or endorsed by Broadcom/VMware, Microsoft, Red Hat, or the Rocky and Alma projects; product names describe compatibility only.
+
+## Credits and license
 
 MIT. Copyright (c) 2019-2026 mikedopp. See [LICENSE](LICENSE).
+
+The release build redistributes the .NET runtime (MIT), the WebView2 SDK loader (BSD-3-Clause), and the Glimmer version orb (MIT, after "orb" by LerSent001, MIT) with its editor's libraries. Every component and its license text is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [licenses/](licenses).

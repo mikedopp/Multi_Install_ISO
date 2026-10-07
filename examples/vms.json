@@ -1,0 +1,20 @@
+{
+  "vms": [
+    {
+      "vmname": "ado-build-agent",
+      "iso": "[ssd-prod] iso/en_windows_server_2019_x64.iso",
+      "imageName": "Windows Server 2019 SERVERSTANDARDCORE",
+      "os": "windows2019srv_64Guest",
+      "cpu": 2,
+      "ramGB": 4,
+      "diskGB": 60,
+      "datastore": "ssd-prod",
+      "network": "ProdNet",
+      "ip": "10.0.0.50",
+      "subnet": "255.255.255.0",
+      "gateway": "10.0.0.1",
+      "dns": ["10.0.0.10"],
+      "domain": "contoso.com"
+    }
+  ]
+}

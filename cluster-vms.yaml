@@ -1,11 +1,12 @@
-# Sample four-node cluster definition used by Build-Cluster.ps1 and the C# orchestrator.
-# Replace infrastructure names, networks, and ISO paths before provisioning.
+# Sample four-node cluster: two IIS front ends and two API servers on Windows Server 2022.
+# Replace datastores, networks, addresses, and the ISO path before building media.
+# vSphere CD drives need a datastore path: "[datastore] folder/file.iso".
 vms:
   - vmname: "iis-web-01"
     description: "IIS frontend server 1"
-    template: null
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
+    iso: "[datastore1] iso/en_windows_server_2022_x64.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"   # Windows Server 2022
     cpu: 4
     ramGB: 8
     diskGB: 60
@@ -23,9 +24,9 @@ vms:
 
   - vmname: "iis-web-02"
     description: "IIS frontend server 2"
-    template: null
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
+    iso: "[datastore1] iso/en_windows_server_2022_x64.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"   # Windows Server 2022
     cpu: 4
     ramGB: 8
     diskGB: 60
@@ -43,9 +44,9 @@ vms:
 
   - vmname: "api-app-01"
     description: "API server 1"
-    template: null
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
+    iso: "[datastore1] iso/en_windows_server_2022_x64.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"   # Windows Server 2022
     cpu: 4
     ramGB: 8
     diskGB: 60
@@ -62,9 +63,9 @@ vms:
 
   - vmname: "api-app-02"
     description: "API server 2"
-    template: null
-    iso: '\\storage\isos\en_windows_server_2022_x64.iso'
-    os: "windows2019Server64Guest"
+    iso: "[datastore1] iso/en_windows_server_2022_x64.iso"
+    imageName: "Windows Server 2022 SERVERSTANDARD"
+    os: "windows2019srvNext_64Guest"   # Windows Server 2022
     cpu: 4
     ramGB: 8
     diskGB: 60

@@ -1,0 +1,22 @@
+# Single Windows Server 2019 VM on vSphere.
+# Secrets are never stored here. The local administrator and domain-join credentials are
+# supplied when the answer media is built (Build-Cluster.ps1 -Mode Media).
+vms:
+  - vmname: "dev-web-01"
+    iso: "[datastore1] iso/en_windows_server_2019_x64.iso"
+    imageName: "Windows Server 2019 SERVERSTANDARD"
+    os: "windows2019srv_64Guest"
+    cpu: 4
+    ramGB: 8
+    diskGB: 60
+    datastore: "datastore1"
+    network: "VM Network"
+    ip: "192.168.10.20"
+    subnet: "255.255.255.0"
+    gateway: "192.168.10.1"
+    dns: ["192.168.10.10", "8.8.8.8"]
+    domain: "contoso.local"
+    timeZone: "Mountain Standard Time"
+    postInstall:
+      - "Install-WindowsFeature Web-Server"
+      - 'New-Item C:\apps -ItemType Directory'
