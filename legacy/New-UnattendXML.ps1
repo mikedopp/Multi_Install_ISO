@@ -23,7 +23,7 @@
 .PARAMETER FirstLogonCommands
     Array of PowerShell commands to run on first logon.
 .EXAMPLE
-    .\New-UnattendXml.ps1 -Path C:\ISO\autounattend.xml -ProductKey ABC12-... -ComputerName WEBSRV01 -LocalAdminPassword 'P@ssw0rd'
+    .\New-UnattendXml.ps1 -Path C:\ISO\autounattend.xml -ProductKey ABC12-... -ComputerName WEBSRV01 -LocalAdminPassword (Read-Host -AsSecureString)
 #>
 
 param(
