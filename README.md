@@ -6,7 +6,24 @@ Describe the VMs, get a plan with a hash, build the unattended answer media, the
 
 ![Overview: what's planned, what's built, and an honest list of what hasn't been proven yet](docs/screenshots/overview.png)
 
-> **Status (0.9.0, prerelease):** planning, validation, answer-media ISOs, install-ISO checks, and the desktop app are proven offline on Windows. **No VM has been built with this release yet.** The vSphere and Hyper-V apply paths, and Windows Setup or Anaconda actually eating the generated media, have not been run. Optimism is not evidence. See [docs/EVALUATION.md](docs/EVALUATION.md).
+> **Status (0.9.1, prerelease):** planning, validation, answer-media ISOs, install-ISO checks, and the desktop app are proven offline on Windows. **No VM has been built with this release yet.** The vSphere and Hyper-V apply paths, and Windows Setup or Anaconda actually eating the generated media, have not been run. Optimism is not evidence. See [docs/EVALUATION.md](docs/EVALUATION.md).
+
+## What it's for
+
+For the person who gets asked for "a few new servers by this afternoon" and is tired of clicking through Windows Setup, or of keeping golden images alive. You write down the VMs you want (names, sizes, network, OS) in one YAML, JSON or CSV file. Multi Install ISO checks it, turns it into a plan you can review, builds the unattended answer media that installs each server straight from the vendor's ISO (Windows Server, or Rocky/Alma/RHEL), and then creates the VMs on vSphere or local Hyper-V with a receipt for every step. It solves two problems: repeatable builds without templates, and knowing exactly what happened when one of them goes wrong.
+
+## How to use
+
+1. **Get it.** Download `MultiInstallIso-<version>-win-x64.zip` from [Releases](https://github.com/mikedopp/Multi_Install_ISO/releases) and extract it, or build it yourself with `build.cmd`, which lands in `dist\MultiInstallIso-<version>-win-x64\`. It needs Windows 10/11, PowerShell 7 and the WebView2 runtime; the .NET runtime is built in.
+2. **Start the app.** Run `MultiInstallIso.exe`. The **Overview** page shows what is planned and built, and the **Dependencies** page shows what is missing (PowerCLI for vSphere, the Hyper-V module for Hyper-V).
+3. **Describe the VMs.** On **Definition**, open a bundled sample (they are read-only, so save a copy) or your own file, pick vSphere or Hyper-V, and fill in the target. Definitions never hold passwords.
+4. **Plan.** Click Plan. Fix anything it lists as blocking until the plan is clean, then note the plan's SHA-256 on the **Plan** page; every later step asks for it.
+5. **Check the install ISOs.** On **Install ISOs**, point at each vendor ISO with the publisher's SHA-256. `PASS` means the hash matched and the content was recognised.
+6. **Build the answer media.** On **Answer media**, enter the admin (and domain-join) credentials in the native dialog. You get one small verified ISO per VM. It holds credentials, so delete it once the servers are built.
+7. **Apply.** The **Apply** page shows a readiness checklist and the exact `Build-Cluster.ps1 -Mode Apply` command to run in a terminal, with the plan hash and the target you must name. It builds the VMs one at a time and stops at the first failure.
+8. **Review.** **Runs** lists every plan, media build and apply attempt with its receipts.
+
+Prefer the command line? Everything above is in [Command line](#command-line) and step by step in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ## The scenario
 

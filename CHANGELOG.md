@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1] - 2026-10-17
+
+Docs and packaging only; the engine and the app behave as in 0.9.0.
+
+### Changed
+- README: new "What it's for" and "How to use" sections (build or download, then Definition, Plan, Answer media, Install ISOs, Apply, Runs), and fresh Overview and Settings screenshots of the current app.
+- The Glimmer kit's `VERSION.txt`, which ships in the release, no longer names the folder it was installed from.
+
 ## [0.9.0] - 2026-10-06
 
 First versioned release: a rebuild of the engine and the app. See `docs/EVALUATION.md` for what was broken and what is now proven.

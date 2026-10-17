@@ -1,6 +1,6 @@
 @{
     RootModule        = 'MultiInstallIso.psm1'
-    ModuleVersion     = '0.9.0'
+    ModuleVersion     = '0.9.1'
     GUID              = '6f1d3a52-6c5e-4a0e-9a54-2b7c0e4d9b31'
     Author            = 'mikedopp'
     Copyright         = '(c) 2019-2026 mikedopp. MIT License.'
