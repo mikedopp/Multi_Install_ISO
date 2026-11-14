@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Multi Install ISO Terraform tfvars",
+  "type": "object",
+  "required": ["vsphere_server", "datacenter", "cluster", "vms"],
+  "properties": {
+    "vsphere_server": { "type": "string" },
+    "allow_unverified_ssl": { "type": "boolean" },
+    "datacenter": { "type": "string" },
+    "cluster": { "type": "string" },
+    "folder": { "type": ["string", "null"] },
+    "vms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "num_cpus", "memory", "disk_size", "datastore", "network", "guest_id", "iso_path"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "num_cpus": { "type": "integer", "minimum": 1 },
+          "memory": { "type": "integer", "minimum": 512 },
+          "disk_size": { "type": "number", "exclusiveMinimum": 0 },
+          "datastore": { "type": "string", "minLength": 1 },
+          "network": { "type": "string", "minLength": 1 },
+          "guest_id": { "type": "string", "minLength": 1 },
+          "iso_path": { "type": "string", "minLength": 1 },
+          "firmware": { "enum": ["efi", "bios"] }
+        }
+      }
+    }
+  }
+}

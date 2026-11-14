@@ -1,0 +1,23 @@
+# Plan-only pipeline. It validates the definition and publishes the plan for review.
+# Media and apply run from an operator workstation (see docs/RUNBOOK.md), never from CI.
+trigger:
+- main
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - name: vmDefinitionFile
+    value: 'cluster-vms.yaml'
+
+steps:
+- pwsh: ./tests/Run-Tests.ps1
+  displayName: 'Offline tests'
+
+- pwsh: |
+    ./Build-Cluster.ps1 -DefinitionPath "$(vmDefinitionFile)" -ArtifactRoot "$(Build.ArtifactStagingDirectory)/plans" -PlanOnly
+  displayName: 'Validate and plan'
+
+- publish: '$(Build.ArtifactStagingDirectory)/plans'
+  artifact: 'build-plan'
+  displayName: 'Publish plan for review'
